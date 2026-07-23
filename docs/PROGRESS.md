@@ -1,0 +1,160 @@
+# DevProof Progress
+
+## Current Status
+
+**Current Feature**
+- `POST /repositories` endpoint completed and tested
+
+**Last Completed**
+- GitHub repository created
+- Git initialized
+- Project folders created
+- .gitignore configured
+- DEV_GUIDE.md created
+- FastAPI backend package created
+- `/health` endpoint created
+- Local server verified with Uvicorn
+- SQLite database foundation created
+- Backend startup initializes the SQLite database file
+- Local database files ignored by Git
+- `repositories` table created
+- `repositories` table verified locally
+- `RepositoryCreate` Pydantic schema added (`schemas.py`)
+- `insert_repository()` added to `database.py` (parameterized `INSERT`)
+- `POST /repositories` route added to `main.py`, returns `201 Created`
+- Fixed a typo bug: `form backend.app.schemas import ...` → `from ...` (SyntaxError)
+- Fixed a typo bug: `INSERT INTO repositrories` → `INSERT INTO repositories` (sqlite3.OperationalError: no such table)
+- Endpoint manually tested with `Invoke-WebRequest`:
+  - Valid new URL → `201 Created`, returns `{"id": ..., "url": ...}`
+  - Duplicate URL → `500 Internal Server Error` (SQLite `UNIQUE` constraint violation, currently unhandled)
+  - Missing `url` field → `422 Unprocessable Entity` (automatic Pydantic validation, no custom code needed)
+- Discovered local Apache (`httpd`) was already bound to port 8000; ran backend on port 8001 instead rather than stopping Apache
+
+**Next Task**
+- Mid-quiz on this feature:
+  - Q1 (why parameterized queries instead of f-strings for SQL) — answered correctly.
+  - Q2 (why FastAPI reads `repository: RepositoryCreate` from the JSON body instead of query params) — asked, not yet answered.
+- After quiz: decide whether to handle the duplicate-URL case cleanly (return `409 Conflict` instead of a raw `500`) as part of this feature, or leave it for later.
+- Wait for approval before starting the next feature.
+
+---
+
+# Project Structure
+
+Current folders:
+
+backend/
+frontend/
+docs/
+
+---
+
+# Decisions Made
+
+- Backend: FastAPI
+- Frontend: React + TypeScript + Vite
+- Database: SQLite (initially)
+- No Docker
+- No Redis
+- No Celery
+
+---
+
+# What I Learned
+
+## Git
+
+- Git tracks files, not folders.
+- Empty folders are ignored.
+- `.gitignore` only affects untracked files.
+- `.env` should never be committed.
+
+## Project Organization
+
+- Separate frontend and backend.
+- Build one feature at a time.
+- Understand every feature before moving on.
+
+## FastAPI Backend
+
+- FastAPI defines API routes and runs Python functions for matching requests.
+- Uvicorn runs the FastAPI application as a local web server.
+- A health endpoint is a simple endpoint used to verify that the backend is running.
+- FastAPI automatically converts returned Python dictionaries into JSON responses.
+- A Python package folder contains an `__init__.py` file.
+
+## SQLite Database
+
+- SQLite stores data in a local database file.
+- Python includes the `sqlite3` module for working with SQLite.
+- A database connection is the link between Python code and the database file.
+- FastAPI can run setup code when the application starts.
+- Generated database files should not be committed to Git.
+- A database table defines the shape of one kind of stored data.
+- A primary key uniquely identifies each row in a table.
+- A unique column prevents duplicate values.
+- `CREATE TABLE IF NOT EXISTS` avoids crashing when the table already exists.
+
+## SQL Basics
+
+- SQL is the language used to talk to a database engine like SQLite; `execute()` just hands SQL text to SQLite to run.
+- An `INSERT` statement adds a new row; `?` is a placeholder that gets filled in with a separate value.
+- **Parameterized queries** (`?` + a tuple of values) keep user input as pure data — it can never be interpreted as SQL syntax, no matter what characters it contains.
+- Building SQL by pasting user input directly into the string (e.g. an f-string) lets malicious input change the meaning of the command itself — this is called **SQL injection**, and it's a serious real-world vulnerability.
+- A trailing comma (`(url,)`) is required to make a one-element Python tuple; `(url)` without the comma is just `url` in parentheses.
+
+## FastAPI Requests & Validation
+
+- A route parameter typed as a Pydantic model (e.g. `repository: RepositoryCreate`) tells FastAPI to parse and validate the incoming JSON request body against that model.
+- If the request body doesn't match the schema (missing/wrong-type fields), FastAPI automatically rejects it with `422 Unprocessable Entity` before the route function body ever runs.
+- `status_code=201` on `@app.post(...)` overrides FastAPI's default `200`, since `201 Created` is the correct status for a successful creation.
+- `cursor.lastrowid` returns the auto-incremented primary key of the row just inserted.
+- A `UNIQUE` column raises `sqlite3.IntegrityError` on a duplicate insert; if uncaught, FastAPI turns any unhandled exception into a generic `500 Internal Server Error`.
+
+## Environment / Tooling (Windows/PowerShell)
+
+- PowerShell's `curl` is aliased to `Invoke-WebRequest`, which uses different flags (`-Method`, `-ContentType`, `-Body`) than real curl's `-X`/`-H`/`-d`.
+- `netstat -ano | findstr :<port>` shows what's listening on a port; `Get-Process -Id <PID>` identifies which program that is.
+- A port conflict (another program already using the port) can produce confusing errors unrelated to your own code — worth checking before assuming a code bug.
+- `uvicorn --reload` runs in the foreground and keeps that terminal busy with logs; a second terminal window is needed to send requests while it keeps running.
+
+---
+
+# Questions I Got Wrong
+
+- `.gitignore` does NOT stop tracking already committed files.
+
+---
+
+# Current Goal
+
+Create the first database table for storing GitHub repository records.
+
+Completed.
+
+Stop after this feature.
+Do not continue automatically.
+
+---
+
+# Important Decisions Made
+
+- Keep the backend minimal for the first version.
+- Use `backend/app/main.py` as the FastAPI application entry point.
+- Use `/health` as the first backend endpoint.
+- Do not add authentication, GitHub analysis, or frontend integration yet.
+- Use Python's built-in `sqlite3` module for the first database foundation.
+- Store the local SQLite file at `backend/devproof.db`.
+- Keep generated SQLite files out of Git.
+- Create a minimal `repositories` table before adding repository API endpoints.
+- Store only `id`, `url`, and `created_at` for now.
+- Do not add analysis fields until the analysis feature needs them.
+- Use `?` parameterized SQL queries everywhere, never f-string/string-formatted SQL, to avoid SQL injection.
+- Run the local backend on port 8001 (not 8000) since local Apache (`httpd`) already occupies port 8000; left Apache untouched rather than stopping it.
+- Duplicate-URL handling (`500` → `409 Conflict`) intentionally left unimplemented for now — decision deferred to next session.
+
+---
+
+# Notes
+
+(Add any personal notes here.)
