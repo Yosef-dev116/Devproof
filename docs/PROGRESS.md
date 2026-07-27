@@ -31,11 +31,28 @@
 - Discovered local Apache (`httpd`) was already bound to port 8000; ran backend on port 8001 instead rather than stopping Apache
 
 **Next Task**
-- Mid-quiz on this feature:
-  - Q1 (why parameterized queries instead of f-strings for SQL) — answered correctly.
-  - Q2 (why FastAPI reads `repository: RepositoryCreate` from the JSON body instead of query params) — asked, not yet answered.
-- After quiz: decide whether to handle the duplicate-URL case cleanly (return `409 Conflict` instead of a raw `500`) as part of this feature, or leave it for later.
+- In progress: handling the duplicate-URL case cleanly (`sqlite3.IntegrityError` → `409 Conflict`) instead of a raw `500`.
 - Wait for approval before starting the next feature.
+
+---
+
+# Collaboration
+
+Two people now work on this project, asynchronously (whenever each is free). To avoid duplicate work and stay in sync:
+
+- **Branch per task.** Don't commit directly to `main`. Create a branch per feature (e.g. `feature/duplicate-url-handling`), push it, and open a pull request on GitHub when it's ready.
+- **Claim a task before starting.** Add your name next to a task in the table below *before* you start working on it, so the other person doesn't pick up the same thing.
+- **Review before merging.** The other person looks over the PR (even briefly) before it merges into `main`, so you both know what changed.
+- **Update the docs as part of the task, not after.** Whoever finishes a task updates this file (`docs/PROGRESS.md`) *and* the plain-English `What we did so far.md` file (in the separate Github project explanation folder) in the same PR — regardless of who wrote the code.
+- **Catch up on the other person's work.** After pulling in commits you didn't write, it's worth having them explained/walked through (e.g. via Claude) before building on top of them, so both of you understand the whole codebase, not just your own half.
+
+## Task Board
+
+| Task | Assignee | Status | Branch |
+|---|---|---|---|
+| Duplicate-URL handling (`409 Conflict`) | Yosef | In progress | (none yet) |
+
+(Add a new row per task. Status: Not started / In progress / In review / Done.)
 
 ---
 
