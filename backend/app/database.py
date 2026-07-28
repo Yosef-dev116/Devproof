@@ -21,10 +21,11 @@ def initialize_database() -> None:
             """
         )
 
-def insert_repository(url:str) -> int:
+
+def insert_repository(url: str) -> int:
     with get_connection() as connection:
         cursor = connection.execute(
             "INSERT INTO repositories (url) VALUES (?)",
-            (url,)
+            (url,),
         )
         return cursor.lastrowid

@@ -29,9 +29,10 @@
   - Duplicate URL → `500 Internal Server Error` (SQLite `UNIQUE` constraint violation, currently unhandled)
   - Missing `url` field → `422 Unprocessable Entity` (automatic Pydantic validation, no custom code needed)
 - Discovered local Apache (`httpd`) was already bound to port 8000; ran backend on port 8001 instead rather than stopping Apache
+- Duplicate-URL case now handled cleanly: `create_repository` wraps `insert_repository` in `try`/`except sqlite3.IntegrityError`, raising `HTTPException(status_code=409, detail="repository already exists")` instead of letting it crash as a raw `500`
+- Verified: duplicate URL now returns `409 Conflict` with `{"detail": "repository already exists"}`; new URLs still return `201 Created` as before
 
 **Next Task**
-- In progress: handling the duplicate-URL case cleanly (`sqlite3.IntegrityError` → `409 Conflict`) instead of a raw `500`.
 - Wait for approval before starting the next feature.
 
 ---
@@ -50,7 +51,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 
 | Task | Assignee | Status | Branch |
 |---|---|---|---|
-| Duplicate-URL handling (`409 Conflict`) | Yosef | In progress | (none yet) |
+| Duplicate-URL handling (`409 Conflict`) | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -168,7 +169,7 @@ Do not continue automatically.
 - Do not add analysis fields until the analysis feature needs them.
 - Use `?` parameterized SQL queries everywhere, never f-string/string-formatted SQL, to avoid SQL injection.
 - Run the local backend on port 8001 (not 8000) since local Apache (`httpd`) already occupies port 8000; left Apache untouched rather than stopping it.
-- Duplicate-URL handling (`500` → `409 Conflict`) intentionally left unimplemented for now — decision deferred to next session.
+- Duplicate-URL handling implemented: caught in `main.py` (not `database.py`), keeping `database.py` free of any HTTP/FastAPI knowledge.
 
 ---
 
