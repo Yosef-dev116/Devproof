@@ -6,14 +6,18 @@ This file is written so you (or an AI assistant you're using, like Codex) can ge
 
 ## What DevProof is
 
-DevProof is a GitHub repository analysis tool — the goal is to give developers an evidence-based "credibility" score derived from their repositories. The backend (CRUD + real GitHub data fetching + a v1 scoring formula) is functional; the frontend is just getting started. Built one small feature at a time.
+DevProof is a pitch-competition MVP: **enter a GitHub username → pick one of their public repos → get an AI-generated, evidence-based engineering readiness report** (a "credit score for software engineers" — multi-category scores, strengths, weaknesses, evidence, recommendations, a learning roadmap). The pitch deadline is days away — prioritize the demo-critical path over polish. The full spec/gap analysis lives in project memory as `devproof_pitch_spec`/`devproof_deadline` if you're using Claude; ask Yosef if you need the full text.
+
+The core flow is built and working end-to-end (backend + frontend), verified against real GitHub usernames/repos. What's likely still missing when you read this: visual styling (currently plain HTML) and rate-limit hardening — check `docs/PROGRESS.md`'s "Next Task" for the current honest state.
 
 ## Tech stack (fixed decisions — don't introduce alternatives)
 
 - **Backend:** Python, FastAPI
-- **Frontend:** React, TypeScript, Vite (scaffolded, early stage)
+- **Frontend:** React, TypeScript, Vite
 - **Database:** SQLite (file-based, no separate server)
-- **Explicitly not using:** Docker, Redis, Celery — keep the first version simple.
+- **AI:** OpenAI API (`gpt-4o-mini` by default — see `backend/app/ai_report.py`)
+- **External API:** GitHub REST API
+- **Explicitly not using:** Docker, Redis, Celery, auth, payments, multi-user features — keep it to the MVP scope.
 
 ## Project structure
 
@@ -23,13 +27,16 @@ backend/
     main.py           — FastAPI app + routes (entry point)
     database.py       — SQLite connection + queries (no FastAPI/HTTP code here)
     schemas.py        — Pydantic models used to validate request/response bodies
-    github_client.py  — calls GitHub's REST API (no FastAPI/database code here)
-    scoring.py         — pure credibility score calculation (no FastAPI/database code here)
+    github_client.py  — calls GitHub's REST API (repo info, commits, tree, README, user's repo list)
+    analysis.py        — pure signal detection from a file-path list (tests/CI/Dockerfile/etc.), no I/O
+    scoring.py         — pure credibility score calculation (stars/forks/commits formula), no I/O
+    ai_report.py        — calls OpenAI to generate the evidence-based report, no I/O besides the API call itself
   requirements.txt
+  .env.example       — documents required env vars (OPENAI_API_KEY); copy to .env and fill in your real key
 docs/
   PROGRESS.md            — technical changelog, decisions, task board
   COLLABORATOR_GUIDE.md   — this file
-frontend/  — React + TypeScript + Vite app (early stage)
+frontend/  — React + TypeScript + Vite app
 ```
 
 **Architecture rule:** `database.py` only talks to SQLite. It never imports FastAPI or raises HTTP-related errors. Any translation from a database error (e.g. duplicate row) into an HTTP response (e.g. `409 Conflict`) happens in `main.py`. Keep that separation — don't collapse the layers.
@@ -40,6 +47,14 @@ frontend/  — React + TypeScript + Vite app (early stage)
 cd backend
 pip install -r requirements.txt
 ```
+
+Create `backend/.env` (git-ignored, never commit it) with your own OpenAI key:
+
+```
+OPENAI_API_KEY=your-real-key-here
+```
+
+`main.py` loads this automatically on startup via `python-dotenv`. Without it, `/repositories/{id}/analyze` will fail (the `/fetch` and list/CRUD endpoints don't need it).
 
 Run the server from the repo root (not from inside `backend/`), since imports use the `backend.app.` prefix:
 

@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Frontend UX polish: loading states + client-side URL validation completed and tested
+- Core pitch-competition MVP flow completed and tested: GitHub username → pick a repo → AI-generated evidence-based engineering readiness report
 
 **Last Completed**
 - GitHub repository created
@@ -73,11 +73,6 @@
 - `main.py`'s CORS `allow_origins` updated to match the fixed frontend port
 - Verified fully in a real browser: added a new repo through the UI, confirmed it appeared with empty stats, triggered its GitHub fetch, and confirmed real stars/forks/score appeared after re-render — the complete add → fetch → score loop works through the actual UI, not just direct API calls
 
-**Next Task**
-- Wait for approval before starting the next feature.
-- Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Revisit if this becomes a real constraint.
-- Credibility score is v1 only (stars/forks/recent commits, fixed weights) — factors and weights are expected to evolve; revisit once real usage/feedback exists.
-- No visual styling on the frontend yet — functional but plain (unstyled HTML table/form).
 - Found via real manual testing (not planned): `POST /repositories/{id}/fetch` returned a generic `502 Bad Gateway` for some repos. Root cause: GitHub's `/repos/{owner}/{repo}/commits` endpoint returns `409 Conflict` (not an empty list) for a repository with zero commits — undocumented-feeling but is GitHub's actual documented behavior. Our code only checked for `404`, so this fell through to the generic `502` branch.
 - Fix in `github_client.py`: `fetch_repo_data()` now checks for `status_code == 409` on the commits call specifically and treats it as `recent_commit_count = 0`, instead of raising.
 - Fix in `main.py`: the generic `502` error `detail` now includes GitHub's actual returned status code (e.g. `"failed to fetch data from GitHub (GitHub returned 403)"`), so any future failure is diagnosable from the response alone instead of requiring server-side log digging.
@@ -86,6 +81,25 @@
 - Add form: submit button now shows "Adding..." and disables while the request is in flight; Fetch/Delete buttons per row show "Fetching..."/"Deleting..." and disable (both buttons in that row, to prevent overlapping actions on the same repo) while their request is running
 - Client-side validation added: a regex (`GITHUB_REPO_URL_PATTERN`) rejects obviously-invalid URLs (missing `https://github.com/owner/repo` shape) before ever sending a request, showing an inline error immediately
 - Verified in a real browser: an invalid URL is rejected instantly with no network request; a real fetch correctly shows "Fetching..." with the button disabled mid-flight, then reverts once the real GitHub data lands
+
+**MAJOR PIVOT (2026-07-28): the real pitch-competition MVP spec surfaced.** Everything above was infrastructure; the actual product — username→pick-repo→AI report — hadn't been built. Full spec, gap analysis, and deadline noted in memory (`devproof_pitch_spec`, `devproof_deadline`). Built in this session:
+
+- `github_client.py` gained: `list_public_repos(username)` (`GET /users/{username}/repos`), `fetch_repo_tree(owner, repo, default_branch)` (`GET .../git/trees/{branch}?recursive=1`, returns `[]` on 404/409 for empty repos), `fetch_readme_text(owner, repo)` (`GET .../readme` with raw-content Accept header, `None` on 404). `fetch_repo_data()` now also returns `default_branch`.
+- New file `backend/app/analysis.py`: `detect_signals(file_paths)` — pure function scanning file paths for `has_tests`, `has_ci` (`.github/workflows/`), `has_dockerfile`, `has_env_example`, `has_license`, `top_level_entries`, `file_count`. No network/DB/FastAPI code, same "keep layers separate" principle as `scoring.py`.
+- New file `backend/app/ai_report.py`: `generate_report(evidence)` calls OpenAI (`gpt-4o-mini`, `response_format={"type": "json_object"}`) with a fixed schema (overall score, 8 categories with name/score/comment, strengths, weaknesses, recommendations, learning roadmap). Raises `AIReportError` on any failure so `main.py` can translate it to a clean `502`, same pattern as GitHub error handling.
+- `openai` + `python-dotenv` added to `requirements.txt`; `backend/.env.example` committed (documents `OPENAI_API_KEY=`); real key goes in git-ignored `backend/.env` (confirmed via `git check-ignore` that the existing root `.gitignore` `.env` rule covers it); `main.py` calls `load_dotenv()` at import time.
+- `repositories` table extended with `analysis_report TEXT` (JSON-encoded) and `analyzed_at TEXT`; `update_repository_analysis()` added to `database.py`. Local `devproof.db` regenerated again (git-ignored test data only).
+- `main.py`: refactored the fetch-and-store logic into `_fetch_and_store_github_data()` (reused by both `/fetch` and the new `/analyze`). New routes: `GET /github/{username}/repos` (404 on unknown user) and `POST /repositories/{repository_id}/analyze` — looks up the repo, always refreshes GitHub data (needed to get `default_branch` reliably anyway), fetches tree + README, runs `detect_signals`, calls `generate_report`, stores and returns the result.
+- `App.tsx` rebuilt with the actual required flow: username input → "Load repositories" → simple list with **Select** buttons → clicking one does `POST /repositories` (handling `409` by looking up the existing row instead of failing) → `POST /repositories/{id}/analyze` with an "Analyzing..." loading state → renders the full report (overall score, category scores/comments, strengths, weaknesses, recommendations, learning roadmap). The old direct-URL-entry table stays below as a history view, each row gaining a **View Report** button.
+- Verified fully end-to-end, live, twice: `octocat/Hello-World` (empty/tiny repo — correctly scored low, correctly flagged no tests/CI/license) and `fastapi/fastapi` (mature repo — correctly detected tests/CI/license present, scored 85/100). Then verified the *actual UI* end-to-end: typed username `psf`, loaded 20 real repos, clicked Select on `psf/httpbin`, watched "Analyzing..." show, and got back a real, coherent, evidence-grounded report rendered on the page.
+- Known limitation: each `/analyze` call takes ~15–30 seconds (4 GitHub calls + 1 OpenAI call) — acceptable for a demo with a loading indicator, but noted here in case it needs optimizing before the pitch.
+- "Role Relevance" category is evaluated generically by the model — no target-role input field was added (kept out of scope for the deadline).
+
+**Next Task**
+- Wait for approval before starting the next feature.
+- Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Higher risk now given `/analyze` makes 4 GitHub calls per run; revisit if demo prep starts hitting it.
+- No visual styling on the frontend yet — functional but plain (unstyled HTML). Worth prioritizing before the actual pitch if time allows, since this is now the demo-facing product.
+- `/analyze` latency (~15-30s) has no loading progress detail beyond "Analyzing..." — consider a more informative multi-step indicator if there's time.
 
 ---
 
@@ -113,6 +127,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Frontend UI: add/list/fetch/delete repositories | Yosef | Done | (none yet — committed directly to `main`) |
 | Fix: 502 on zero-commit repos | Yosef | Done | (none yet — committed directly to `main`) |
 | Frontend UX: loading states + client-side validation | Yosef | Done | (none yet — committed directly to `main`) |
+| GitHub username→repo picker + AI report generation (pitch MVP core) | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -229,6 +244,15 @@ docs/
 - Not every value returned by an API needs to be stored — a value that can always be recalculated from existing data (like a score from `stars`/`forks`/`recent_commit_count`) is simpler to compute on the fly than to keep in sync in the database.
 - Keeping the calculation in its own file (`scoring.py`) as a plain function (no database or FastAPI involved) makes it easy to test and easy to change the formula later without touching routes or the database layer.
 
+## Integrating an LLM (OpenAI) into a real feature
+
+- `response_format={"type": "json_object"}` on a chat completion tells the model to return valid JSON, not free-form prose — critical when the response needs to be `json.loads()`-parsed by code, not read by a human.
+- Fixing the exact JSON shape in the system prompt (field names, types, category list) makes the model's output reliably structured across calls, instead of varying each time.
+- Evidence quality drives output quality: giving the model concrete signals (file paths detected, README text, commit counts) instead of vague context produces specific, grounded claims ("no tests/ directory found") instead of generic filler.
+- GitHub's git-tree endpoint (`/git/trees/{branch}?recursive=1`) is the efficient way to get a repo's full file listing in one call, rather than recursively walking the contents API directory by directory.
+- An external AI call is just another thing that can fail (network, invalid response, rate limit) — wrap it in its own exception type (`AIReportError`) and translate it to an HTTP error in the route, the same pattern already used for GitHub failures.
+- A `python-dotenv` `load_dotenv()` call at process startup reads a local `.env` file into environment variables automatically — avoids needing to export secrets manually in every terminal session.
+
 ## Environment / Tooling (Windows/PowerShell)
 
 - PowerShell's `curl` is aliased to `Invoke-WebRequest`, which uses different flags (`-Method`, `-ContentType`, `-Body`) than real curl's `-X`/`-H`/`-d`.
@@ -270,6 +294,11 @@ Do not continue automatically.
 - Use `?` parameterized SQL queries everywhere, never f-string/string-formatted SQL, to avoid SQL injection.
 - Run the local backend on port 8002 (not 8000 or 8001) — 8000 is occupied by local Apache (`httpd`), and 8001 developed an unexplained stuck/orphaned socket on this machine during development. Left both alone rather than digging further; 8002 is now the standard local dev port for the backend.
 - Duplicate-URL handling implemented: caught in `main.py` (not `database.py`), keeping `database.py` free of any HTTP/FastAPI knowledge.
+- DevProof's real spec is the pitch-competition MVP (username → pick repo → AI report), not just the repository CRUD — see `devproof_pitch_spec` in memory for the full spec. Pitch deadline is days away; prioritize the demo-critical path only, skip polish/hardening not on that path.
+- `analysis_report` stored as a single JSON `TEXT` column rather than modeling separate tables for categories/strengths/etc. — simplest option that still lets the whole report round-trip through the API cleanly, given the deadline.
+- `POST /repositories/{id}/analyze` always re-fetches fresh GitHub data first (rather than only fetching if never fetched before) — needed to reliably get `default_branch` for the tree call anyway, and keeps stats current for each analysis.
+- OpenAI model fixed as a single constant (`OPENAI_MODEL` in `ai_report.py`) rather than configurable — trivial to change later if a better current model is preferred.
+- No target-role input field added for the "Role Relevance" scoring category — the model evaluates it generically. Smallest scope that satisfies the spec category given the timeline.
 
 ---
 

@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -23,7 +24,9 @@ def initialize_database() -> None:
                 description TEXT,
                 owner TEXT,
                 recent_commit_count INTEGER,
-                last_fetched_at TEXT
+                last_fetched_at TEXT,
+                analysis_report TEXT,
+                analyzed_at TEXT
             )
             """
         )
@@ -79,6 +82,19 @@ def update_repository_github_data(
             WHERE id = ?
             """,
             (stars, forks, language, description, owner, recent_commit_count, repository_id),
+        )
+
+
+def update_repository_analysis(repository_id: int, report: dict) -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE repositories
+            SET analysis_report = ?,
+                analyzed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (json.dumps(report), repository_id),
         )
 
 

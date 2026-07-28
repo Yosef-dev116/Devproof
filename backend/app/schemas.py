@@ -15,3 +15,5 @@ class RepositoryOut(BaseModel):
     recent_commit_count: int | None = None
     last_fetched_at: str | None = None
     credibility_score: int | None = None
+    analysis_report: dict | None = None
+    analyzed_at: str | None = None
