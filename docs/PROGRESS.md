@@ -4,6 +4,7 @@
 
 **Current Feature**
 - Full frontend UI (add/list/fetch/delete repositories) completed and tested
+- Frontend loading states completed and tested
 
 **Last Completed**
 - GitHub repository created
@@ -72,12 +73,16 @@
 - `vite.config.ts` pinned to a fixed dev server port (`5180`, `strictPort: true`) instead of Vite's auto-increment behavior — avoids depending on whichever port happens to be free (this machine has other, unrelated projects that also use Vite's default port 5173)
 - `main.py`'s CORS `allow_origins` updated to match the fixed frontend port
 - Verified fully in a real browser: added a new repo through the UI, confirmed it appeared with empty stats, triggered its GitHub fetch, and confirmed real stars/forks/score appeared after re-render — the complete add → fetch → score loop works through the actual UI, not just direct API calls
+- Frontend loading feedback added: the initial repository request shows a loading message, and Add, Fetch, and Delete buttons show action-specific text and become disabled while their requests are running
+- Frontend request handling now uses `try`/`catch`/`finally` so errors are displayed and loading states are always cleared after success or failure
+- Added an empty state when no repositories have been saved
+- Verified add, fetch, and delete actions in the browser; `npm run build` completed successfully
 
 **Next Task**
 - Wait for approval before starting the next feature.
 - Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Revisit if this becomes a real constraint.
 - Credibility score is v1 only (stars/forks/recent commits, fixed weights) — factors and weights are expected to evolve; revisit once real usage/feedback exists.
-- No loading states, styling, or input validation on the frontend yet (e.g. no feedback while a fetch is in progress) — functional but bare-bones.
+- Styling, or input validation on the frontend yet (e.g. no feedback while a fetch is in progress) — functional but bare-bones.
 
 ---
 
@@ -103,6 +108,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Credibility score v1 (stars/forks/commits) | Yosef | Done | (none yet — committed directly to `main`) |
 | Frontend scaffold + backend connectivity check | Yosef | Done | (none yet — committed directly to `main`) |
 | Frontend UI: add/list/fetch/delete repositories | Yosef | Done | (none yet — committed directly to `main`) |
+| Frontend loading states | Rama| Done | feature/frontend-loading-states |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
