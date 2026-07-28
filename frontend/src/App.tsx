@@ -101,6 +101,8 @@ function App() {
 
       setUrl('')
       loadRepositories()
+    } catch {
+      setError('Could not reach the backend server. Is it running?')
     } finally {
       setIsAdding(false)
     }
@@ -139,6 +141,8 @@ function App() {
         return
       }
       setGithubRepos(await response.json())
+    } catch {
+      setUsernameError('Could not reach the backend server. Is it running?')
     } finally {
       setIsLoadingRepos(false)
     }
@@ -183,6 +187,8 @@ function App() {
 
       setActiveRepositoryId(repositoryId)
       await loadRepositories()
+    } catch {
+      setUsernameError('Could not reach the backend server. Is it running?')
     } finally {
       setSelectingUrl(null)
     }

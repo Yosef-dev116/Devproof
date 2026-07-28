@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Mobile-responsive frontend styling added (CSS verified, live-viewport check not fully verified this session — see note below)
+- Frontend now shows a clear error when the backend is unreachable, instead of failing silently
 
 **Last Completed**
 - GitHub repository created
@@ -125,6 +125,12 @@
 **Next Task**
 - Wait for approval before starting the next feature.
 - Do a manual visual check of the mobile layout (browser resize or DevTools device toolbar) — not verified live this session due to tooling limitations.
+
+**Bug fix — silent failure when backend is unreachable:**
+- Reported by hands-on testing: entering a username and clicking "Load repositories" produced no visible result. Root cause: the backend server had been stopped (as part of test cleanup between features) and never restarted, so the frontend's `fetch()` calls threw a network error that wasn't caught anywhere — the loading state just quietly reset with no message shown.
+- Fixed in `App.tsx`: added a `catch` block to `handleAdd`, `handleLoadGithubRepos`, and `handleSelectRepo` — each now sets a clear "Could not reach the backend server. Is it running?" message instead of failing silently. These functions already had `try`/`finally`; this just adds the missing `catch`.
+- Immediate fix: restarted the backend (this time with `--reload`, so it survives future code edits without needing a manual restart).
+- Recurring environment gotcha (noted for next time): stopping the `uvicorn --reload` **reloader** process (the one `Stop-Process` finds first via `Get-CimInstance ... -match 'uvicorn'`) does not necessarily stop its spawned **worker** child process, which keeps serving requests independently. This has caused "I killed it but it's still responding" confusion twice now. When truly stopping the backend, check for `multiprocessing`-spawned child processes too (`Get-CimInstance Win32_Process | Where CommandLine -match 'multiprocessing'`), not just ones matching `'uvicorn'`.
 - No responsive/mobile-specific styling verified yet — only tested at desktop viewport.
 
 ---
