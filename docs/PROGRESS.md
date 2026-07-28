@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Frontend now shows a clear error when the backend is unreachable, instead of failing silently
+- Fixed a real bug: `load_dotenv()` silently failed to find `backend/.env` in uvicorn's `--reload` worker process on Windows
 
 **Last Completed**
 - GitHub repository created
@@ -122,16 +122,22 @@
 - `App.css`: added a `@media (max-width: 640px)` block — reduces `.app`/`.card` padding, shrinks the `h1`, stacks `.inline-form` and `.repo-picker-item` vertically (full-width inputs/buttons instead of a cramped row), lets `.row-actions` wrap, and gives `.repo-table` a `min-width: 480px` inside the new scroll wrapper so it scrolls cleanly instead of breaking layout.
 - **Verification limitation:** this session's browser-automation tool had a broken `resize_window` (window resize didn't actually change the reported viewport width, `window.innerWidth` stayed at the desktop size regardless) on top of the already-broken screenshot API from earlier in the session. Confirmed instead that the media query rule parses correctly and is present in the loaded stylesheet (`document.styleSheets`), and that both `tsc -b` and a full production `vite build` succeed with no errors. **The actual narrow-viewport visual layout has not been eyeballed this session** — worth a quick manual check (resize the browser window, or DevTools' device toolbar) before relying on it for a demo.
 
-**Next Task**
-- Wait for approval before starting the next feature.
-- Do a manual visual check of the mobile layout (browser resize or DevTools device toolbar) — not verified live this session due to tooling limitations.
-
 **Bug fix — silent failure when backend is unreachable:**
 - Reported by hands-on testing: entering a username and clicking "Load repositories" produced no visible result. Root cause: the backend server had been stopped (as part of test cleanup between features) and never restarted, so the frontend's `fetch()` calls threw a network error that wasn't caught anywhere — the loading state just quietly reset with no message shown.
 - Fixed in `App.tsx`: added a `catch` block to `handleAdd`, `handleLoadGithubRepos`, and `handleSelectRepo` — each now sets a clear "Could not reach the backend server. Is it running?" message instead of failing silently. These functions already had `try`/`finally`; this just adds the missing `catch`.
 - Immediate fix: restarted the backend (this time with `--reload`, so it survives future code edits without needing a manual restart).
-- Recurring environment gotcha (noted for next time): stopping the `uvicorn --reload` **reloader** process (the one `Stop-Process` finds first via `Get-CimInstance ... -match 'uvicorn'`) does not necessarily stop its spawned **worker** child process, which keeps serving requests independently. This has caused "I killed it but it's still responding" confusion twice now. When truly stopping the backend, check for `multiprocessing`-spawned child processes too (`Get-CimInstance Win32_Process | Where CommandLine -match 'multiprocessing'`), not just ones matching `'uvicorn'`.
-- No responsive/mobile-specific styling verified yet — only tested at desktop viewport.
+- Recurring environment gotcha (noted for next time): stopping the `uvicorn --reload` **reloader** process (the one `Stop-Process` finds first via `Get-CimInstance ... -match 'uvicorn'`) does not necessarily stop its spawned **worker** child process, which keeps serving requests independently. This has caused "I killed it but it's still responding" confusion multiple times now. When truly stopping the backend, check for `multiprocessing`-spawned child processes too (`Get-CimInstance Win32_Process | Where CommandLine -match 'multiprocessing'`), not just ones matching `'uvicorn'`.
+
+**Bug fix — `.env` silently not loading in the actual running worker process:**
+- Reported by hands-on testing: username loading worked, but selecting a repo to analyze failed with "Could not reach the backend server" (a misleading message — see below). The real backend log showed `openai.OpenAIError: Missing credentials ... OPENAI_API_KEY`, even though `backend/.env` genuinely contained a valid key and `GITHUB_TOKEN` from the same file was loading fine.
+- Root cause: `load_dotenv()` (called with no arguments in `main.py`) auto-discovers `.env` by walking up from the *caller's file location* using Python stack introspection. That works when `main.py` runs normally, but uvicorn's `--reload` spawns its actual worker process via Windows' `multiprocessing` **spawn** method — a fresh interpreter bootstrap that doesn't preserve the same stack context, so the auto-discovery silently failed to find `backend/.env` specifically in that worker process. Confirmed by writing a throwaway script at the exact same file location (`backend/app/_debug_env_check.py`) — it found the `.env` fine when run directly, but the real uvicorn worker still didn't.
+- Fix: `main.py` now calls `load_dotenv(Path(__file__).resolve().parent.parent / ".env")` — an explicit path derived from the module's own `__file__`, immune to how the process was spawned.
+- Verified: fully stopped every backend process (reloader + worker), restarted clean, and successfully ran a real `/analyze` call end-to-end against the freshly-spawned worker.
+- Separately: while debugging this, `cat -A` was accidentally run on `backend/.env`, printing partial key values into the conversation. User was advised to rotate both `OPENAI_API_KEY` and `GITHUB_TOKEN` as a precaution — **never `cat`/print `.env` file contents directly again; use `dotenv_values()` or check only key names/lengths when inspecting.**
+
+**Next Task**
+- Wait for approval before starting the next feature.
+- Do a manual visual check of the mobile layout (browser resize or DevTools device toolbar) — not verified live this session due to tooling limitations.
 
 ---
 
@@ -163,6 +169,8 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Visual styling + `/analyze` latency reduction | Yosef | Done | (none yet — committed directly to `main`) |
 | GitHub API authentication (60/hr → 5000/hr) | Yosef | Done | (none yet — committed directly to `main`) |
 | Mobile-responsive styling | Yosef | Done (visual check pending) | (none yet — committed directly to `main`) |
+| Fix: backend-unreachable error message | Yosef | Done | (none yet — committed directly to `main`) |
+| Fix: `.env` not loading in `--reload` worker process | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -296,6 +304,9 @@ docs/
 - With an AI API call in the pipeline, the model's *output length* is often the biggest lever on latency — asking for shorter, capped-length responses (word limits, fixed list sizes) can meaningfully speed up generation, separate from which model is used.
 - Most public APIs (GitHub included) rate-limit unauthenticated requests far more aggressively than authenticated ones — attaching a personal access token via an `Authorization` header is often a five-minute fix for what would otherwise become a real production/demo blocker.
 - Verifying "is my token actually being used and accepted" is worth doing explicitly (checking the header is set, then calling the API's own rate-limit/whoami endpoint) rather than assuming it works just because no error was thrown.
+- `python-dotenv`'s default `load_dotenv()` auto-discovery depends on Python stack introspection (finding the caller's file to search upward from) — this can silently fail in process-spawning setups (like a dev server's auto-reload worker) that don't preserve a normal call stack. Passing an explicit path (built from the calling module's own `__file__`) is more robust than relying on auto-discovery whenever the process might be started in an unusual way.
+- A generic frontend error message ("could not reach the backend") can be misleading when the real cause is a backend-side 500 with a non-JSON body (the browser's `.json()` parse then throws, landing in the same catch block as a genuine network failure) — worth remembering that "network error" in the browser can also mean "the server returned something the client couldn't parse," not only "the server is down."
+- Never run `cat`/`print` on a file containing secrets to inspect its structure — use tools that show only what's needed (key names, lengths, a parser like `dotenv_values()`) so real secret values never end up in a terminal transcript or conversation log.
 
 ## Environment / Tooling (Windows/PowerShell)
 

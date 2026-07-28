@@ -1,12 +1,18 @@
 import json
 import sqlite3
+from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv()
+# Point load_dotenv() at the exact file rather than relying on its default
+# auto-discovery (stack-based, walking up from the caller's file). That
+# discovery silently fails when uvicorn's --reload spawns its worker via
+# Windows' multiprocessing "spawn" method, which doesn't preserve the same
+# stack context - an explicit path works regardless of how the process started.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from backend.app.schemas import RepositoryCreate, RepositoryOut
 from backend.app.database import (
