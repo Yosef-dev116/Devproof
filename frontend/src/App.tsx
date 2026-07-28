@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import './App.css'
 
 const API_BASE = 'http://127.0.0.1:8002'
 const GITHUB_REPO_URL_PATTERN = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/?$/
@@ -35,6 +36,16 @@ interface AnalysisReport {
   weaknesses: string[]
   recommendations: string[]
   learning_roadmap: string[]
+}
+
+function scoreTier(score: number): 'high' | 'medium' | 'low' {
+  if (score >= 80) return 'high'
+  if (score >= 50) return 'medium'
+  return 'low'
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  return <span className={`score-badge score-${scoreTier(score)}`}>{score}</span>
 }
 
 function App() {
@@ -181,12 +192,15 @@ function App() {
   const activeReport = activeRepository?.analysis_report ?? null
 
   return (
-    <div>
-      <h1>DevProof</h1>
+    <div className="app">
+      <header className="app-header">
+        <h1>DevProof</h1>
+        <p className="tagline">Evidence-based GitHub repository analysis</p>
+      </header>
 
-      <section>
+      <section className="card">
         <h2>Analyze a developer's GitHub repository</h2>
-        <form onSubmit={handleLoadGithubRepos}>
+        <form className="inline-form" onSubmit={handleLoadGithubRepos}>
           <input
             type="text"
             value={username}
@@ -194,19 +208,24 @@ function App() {
             placeholder="GitHub username"
             disabled={isLoadingRepos}
           />
-          <button type="submit" disabled={isLoadingRepos}>
+          <button type="submit" className="btn btn-primary" disabled={isLoadingRepos}>
             {isLoadingRepos ? 'Loading...' : 'Load repositories'}
           </button>
         </form>
-        {usernameError && <p>{usernameError}</p>}
+        {usernameError && <p className="error-text">{usernameError}</p>}
 
         {githubRepos.length > 0 && (
-          <ul>
+          <ul className="repo-picker-list">
             {githubRepos.map((repo) => (
-              <li key={repo.full_name}>
-                {repo.full_name} ({repo.stargazers_count} stars, {repo.language ?? 'unknown language'})
-                {' '}
+              <li key={repo.full_name} className="repo-picker-item">
+                <div className="repo-picker-info">
+                  <span className="repo-name">{repo.full_name}</span>
+                  <span className="repo-meta">
+                    ★ {repo.stargazers_count} · {repo.language ?? 'unknown language'}
+                  </span>
+                </div>
                 <button
+                  className="btn btn-secondary"
                   onClick={() => handleSelectRepo(repo)}
                   disabled={selectingUrl !== null}
                 >
@@ -219,44 +238,58 @@ function App() {
       </section>
 
       {activeReport && (
-        <section>
-          <h2>Engineering Readiness Report: {activeRepository?.url}</h2>
-          <p>Overall score: {activeReport.overall_score}/100</p>
+        <section className="card report-card">
+          <h2>Engineering Readiness Report</h2>
+          <p className="report-subject">{activeRepository?.url}</p>
+
+          <div className="overall-score">
+            <ScoreBadge score={activeReport.overall_score} />
+            <span className="overall-score-label">Overall Score</span>
+          </div>
 
           <h3>Categories</h3>
-          <ul>
+          <ul className="category-list">
             {activeReport.categories.map((category) => (
-              <li key={category.name}>
-                <strong>{category.name}: {category.score}/100</strong> — {category.comment}
+              <li key={category.name} className="category-item">
+                <ScoreBadge score={category.score} />
+                <div>
+                  <div className="category-name">{category.name}</div>
+                  <div className="category-comment">{category.comment}</div>
+                </div>
               </li>
             ))}
           </ul>
 
-          <h3>Strengths</h3>
-          <ul>
-            {activeReport.strengths.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-
-          <h3>Weaknesses</h3>
-          <ul>
-            {activeReport.weaknesses.map((item) => <li key={item}>{item}</li>)}
-          </ul>
+          <div className="report-columns">
+            <div>
+              <h3>Strengths</h3>
+              <ul className="plain-list">
+                {activeReport.strengths.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </div>
+            <div>
+              <h3>Weaknesses</h3>
+              <ul className="plain-list">
+                {activeReport.weaknesses.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </div>
+          </div>
 
           <h3>Recommendations</h3>
-          <ul>
+          <ul className="plain-list">
             {activeReport.recommendations.map((item) => <li key={item}>{item}</li>)}
           </ul>
 
           <h3>Learning Roadmap</h3>
-          <ul>
+          <ul className="plain-list">
             {activeReport.learning_roadmap.map((item) => <li key={item}>{item}</li>)}
           </ul>
         </section>
       )}
 
-      <section>
+      <section className="card">
         <h2>Add a repository directly</h2>
-        <form onSubmit={handleAdd}>
+        <form className="inline-form" onSubmit={handleAdd}>
           <input
             type="text"
             value={url}
@@ -264,13 +297,13 @@ function App() {
             placeholder="https://github.com/owner/repo"
             disabled={isAdding}
           />
-          <button type="submit" disabled={isAdding}>
+          <button type="submit" className="btn btn-primary" disabled={isAdding}>
             {isAdding ? 'Adding...' : 'Add repository'}
           </button>
         </form>
-        {error && <p>{error}</p>}
+        {error && <p className="error-text">{error}</p>}
 
-        <table>
+        <table className="repo-table">
           <thead>
             <tr>
               <th>URL</th>
@@ -286,23 +319,34 @@ function App() {
                 <td>{repository.url}</td>
                 <td>{repository.stars ?? '-'}</td>
                 <td>{repository.forks ?? '-'}</td>
-                <td>{repository.credibility_score ?? '-'}</td>
                 <td>
+                  {repository.credibility_score !== null
+                    ? <ScoreBadge score={repository.credibility_score} />
+                    : '-'}
+                </td>
+                <td className="row-actions">
                   <button
+                    className="btn btn-small"
                     onClick={() => handleFetch(repository.id)}
                     disabled={fetchingId === repository.id || deletingId === repository.id}
                   >
                     {fetchingId === repository.id ? 'Fetching...' : 'Fetch'}
                   </button>
                   <button
+                    className="btn btn-small btn-danger"
                     onClick={() => handleDelete(repository.id)}
                     disabled={fetchingId === repository.id || deletingId === repository.id}
                   >
                     {deletingId === repository.id ? 'Deleting...' : 'Delete'}
                   </button>
-                  <button onClick={() => setActiveRepositoryId(repository.id)}>
-                    View Report
-                  </button>
+                  {repository.analysis_report && (
+                    <button
+                      className="btn btn-small btn-secondary"
+                      onClick={() => setActiveRepositoryId(repository.id)}
+                    >
+                      View Report
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

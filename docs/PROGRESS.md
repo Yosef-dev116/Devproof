@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Core pitch-competition MVP flow completed and tested: GitHub username → pick a repo → AI-generated evidence-based engineering readiness report
+- Visual styling + `/analyze` latency reduction (27s → ~6-8s) completed and tested
 
 **Last Completed**
 - GitHub repository created
@@ -95,11 +95,27 @@
 - Known limitation: each `/analyze` call takes ~15–30 seconds (4 GitHub calls + 1 OpenAI call) — acceptable for a demo with a loading indicator, but noted here in case it needs optimizing before the pitch.
 - "Role Relevance" category is evaluated generically by the model — no target-role input field was added (kept out of scope for the deadline).
 
+**Latency fix — `github_client.py`:**
+- Added a module-level `requests.Session()` (`_session`) reused across every GitHub call — avoids repeating TLS handshakes to `api.github.com` on each of the 4+ calls per analysis.
+- `fetch_repo_data()` now fetches repo info and commit count **in parallel** (`concurrent.futures.ThreadPoolExecutor`, 2 workers) instead of sequentially.
+- New `fetch_tree_and_readme()` fetches the git tree and README **in parallel** (same pattern) — `main.py`'s `/analyze` route now calls this instead of two sequential calls.
+
+**Latency fix — `ai_report.py`:**
+- `REPORT_SCHEMA_DESCRIPTION` now caps each category comment at ~15 words and each of the 4 lists (strengths/weaknesses/recommendations/learning_roadmap) at exactly 3 short items — less output to generate, directly cutting OpenAI response time.
+- Added `max_tokens=900` as a safety ceiling on the completion.
+- README excerpt sent as evidence trimmed from 3000 to 1500 characters (`main.py`).
+- **Result:** `/analyze` end-to-end time dropped from ~15-30s to a consistent ~6-8s across multiple real repos, verified by timing curl requests directly.
+
+**Visual styling — frontend:**
+- New `frontend/src/App.css`: card-based layout (`.card`), color-coded score badges (`.score-badge` + `.score-high`/`-medium`/`-low`, green/orange/red thresholds at 80/50), styled buttons (`.btn-primary`/`-secondary`/`-danger`/`-small`), styled GitHub repo picker list, two-column strengths/weaknesses layout in the report, styled history table.
+- Reuses the existing light/dark CSS variables from `index.css` (`--accent`, `--bg`, `--text`, `--shadow`, etc.) rather than hardcoding colors, so both themes still work.
+- Removed leftover fixed-width/centered marketing-page layout from the original Vite scaffold's `#root` rule in `index.css` (was fighting with the new app layout).
+- Verified: computed styles checked directly in a live browser tab (border-radius, box-shadow, button colors, score-badge colors change correctly with score value) since this session's screenshot tool was unavailable; then a full live analysis run through the actual styled UI confirmed the report renders correctly end-to-end.
+
 **Next Task**
 - Wait for approval before starting the next feature.
 - Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Higher risk now given `/analyze` makes 4 GitHub calls per run; revisit if demo prep starts hitting it.
-- No visual styling on the frontend yet — functional but plain (unstyled HTML). Worth prioritizing before the actual pitch if time allows, since this is now the demo-facing product.
-- `/analyze` latency (~15-30s) has no loading progress detail beyond "Analyzing..." — consider a more informative multi-step indicator if there's time.
+- No responsive/mobile-specific styling verified yet — only tested at desktop viewport.
 
 ---
 
@@ -128,6 +144,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Fix: 502 on zero-commit repos | Yosef | Done | (none yet — committed directly to `main`) |
 | Frontend UX: loading states + client-side validation | Yosef | Done | (none yet — committed directly to `main`) |
 | GitHub username→repo picker + AI report generation (pitch MVP core) | Yosef | Done | (none yet — committed directly to `main`) |
+| Visual styling + `/analyze` latency reduction | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -252,6 +269,13 @@ docs/
 - GitHub's git-tree endpoint (`/git/trees/{branch}?recursive=1`) is the efficient way to get a repo's full file listing in one call, rather than recursively walking the contents API directory by directory.
 - An external AI call is just another thing that can fail (network, invalid response, rate limit) — wrap it in its own exception type (`AIReportError`) and translate it to an HTTP error in the route, the same pattern already used for GitHub failures.
 - A `python-dotenv` `load_dotenv()` call at process startup reads a local `.env` file into environment variables automatically — avoids needing to export secrets manually in every terminal session.
+
+## Performance: Parallelizing Independent Network Calls
+
+- When two network calls don't depend on each other's results (e.g. fetching a repo's commit count and its basic info), running them in parallel instead of one-after-another cuts wall-clock time roughly in half for that pair.
+- `concurrent.futures.ThreadPoolExecutor` is a straightforward way to run a few blocking calls (like `requests.get`) concurrently in ordinary synchronous Python, without needing `async`/`await` everywhere.
+- A shared `requests.Session()` reused across multiple calls to the same host avoids repeating the TCP/TLS handshake for every single request — a real, measurable latency win when making several calls to the same API in a row.
+- With an AI API call in the pipeline, the model's *output length* is often the biggest lever on latency — asking for shorter, capped-length responses (word limits, fixed list sizes) can meaningfully speed up generation, separate from which model is used.
 
 ## Environment / Tooling (Windows/PowerShell)
 

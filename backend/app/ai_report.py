@@ -10,20 +10,22 @@ Return ONLY a JSON object with exactly this shape (no markdown, no commentary):
 {
   "overall_score": <integer 0-100>,
   "categories": [
-    {"name": "Code Organization", "score": <integer 0-100>, "comment": "<string>"},
-    {"name": "Documentation", "score": <integer 0-100>, "comment": "<string>"},
-    {"name": "Testing", "score": <integer 0-100>, "comment": "<string>"},
-    {"name": "DevOps", "score": <integer 0-100>, "comment": "<string>"},
-    {"name": "Security", "score": <integer 0-100>, "comment": "<string>"},
-    {"name": "Collaboration", "score": <integer 0-100>, "comment": "<string>"},
-    {"name": "Project Maturity", "score": <integer 0-100>, "comment": "<string>"},
-    {"name": "Role Relevance", "score": <integer 0-100>, "comment": "<string>"}
+    {"name": "Code Organization", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
+    {"name": "Documentation", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
+    {"name": "Testing", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
+    {"name": "DevOps", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
+    {"name": "Security", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
+    {"name": "Collaboration", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
+    {"name": "Project Maturity", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
+    {"name": "Role Relevance", "score": <integer 0-100>, "comment": "<string, max 15 words>"}
   ],
-  "strengths": [<string>, ...],
-  "weaknesses": [<string>, ...],
-  "recommendations": [<string>, ...],
-  "learning_roadmap": [<string>, ...]
+  "strengths": [<string, max 12 words> - exactly 3 items],
+  "weaknesses": [<string, max 12 words> - exactly 3 items],
+  "recommendations": [<string, max 12 words> - exactly 3 items],
+  "learning_roadmap": [<string, max 12 words> - exactly 3 items]
 }
+
+Be strict about the word limits and item counts above - keep every string short and to the point.
 
 Base every score and comment on the evidence provided. Reference specific evidence
 (e.g. "no tests/ directory found", "README is only 3 lines") in comments/weaknesses
@@ -44,6 +46,7 @@ def generate_report(evidence: dict) -> dict:
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             response_format={"type": "json_object"},
+            max_tokens=900,
             messages=[
                 {
                     "role": "system",

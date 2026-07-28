@@ -1,6 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 
 GITHUB_API_BASE = "https://api.github.com"
+
+_session = requests.Session()
 
 
 def parse_github_url(url: str) -> tuple[str, str]:
@@ -8,18 +12,27 @@ def parse_github_url(url: str) -> tuple[str, str]:
     return owner, repo
 
 
-def fetch_repo_data(owner: str, repo: str) -> dict:
-    repo_response = requests.get(f"{GITHUB_API_BASE}/repos/{owner}/{repo}")
-    repo_response.raise_for_status()
-    repo_data = repo_response.json()
+def _fetch_repo_info(owner: str, repo: str) -> dict:
+    response = _session.get(f"{GITHUB_API_BASE}/repos/{owner}/{repo}")
+    response.raise_for_status()
+    return response.json()
 
-    commits_response = requests.get(f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits")
-    if commits_response.status_code == 409:
+
+def _fetch_commit_count(owner: str, repo: str) -> int:
+    response = _session.get(f"{GITHUB_API_BASE}/repos/{owner}/{repo}/commits")
+    if response.status_code == 409:
         # GitHub returns 409 (not an empty list) when a repository has no commits yet.
-        recent_commit_count = 0
-    else:
-        commits_response.raise_for_status()
-        recent_commit_count = len(commits_response.json())
+        return 0
+    response.raise_for_status()
+    return len(response.json())
+
+
+def fetch_repo_data(owner: str, repo: str) -> dict:
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        repo_info_future = executor.submit(_fetch_repo_info, owner, repo)
+        commit_count_future = executor.submit(_fetch_commit_count, owner, repo)
+        repo_data = repo_info_future.result()
+        recent_commit_count = commit_count_future.result()
 
     return {
         "stars": repo_data["stargazers_count"],
@@ -33,7 +46,7 @@ def fetch_repo_data(owner: str, repo: str) -> dict:
 
 
 def list_public_repos(username: str) -> list[dict]:
-    response = requests.get(
+    response = _session.get(
         f"{GITHUB_API_BASE}/users/{username}/repos",
         params={"per_page": 100, "sort": "updated"},
     )
@@ -52,7 +65,7 @@ def list_public_repos(username: str) -> list[dict]:
 
 
 def fetch_repo_tree(owner: str, repo: str, default_branch: str) -> list[str]:
-    response = requests.get(
+    response = _session.get(
         f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{default_branch}",
         params={"recursive": "1"},
     )
@@ -64,7 +77,7 @@ def fetch_repo_tree(owner: str, repo: str, default_branch: str) -> list[str]:
 
 
 def fetch_readme_text(owner: str, repo: str) -> str | None:
-    response = requests.get(
+    response = _session.get(
         f"{GITHUB_API_BASE}/repos/{owner}/{repo}/readme",
         headers={"Accept": "application/vnd.github.raw+json"},
     )
@@ -72,3 +85,10 @@ def fetch_readme_text(owner: str, repo: str) -> str | None:
         return None
     response.raise_for_status()
     return response.text
+
+
+def fetch_tree_and_readme(owner: str, repo: str, default_branch: str) -> tuple[list[str], str | None]:
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        tree_future = executor.submit(fetch_repo_tree, owner, repo, default_branch)
+        readme_future = executor.submit(fetch_readme_text, owner, repo)
+        return tree_future.result(), readme_future.result()

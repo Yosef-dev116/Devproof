@@ -22,8 +22,7 @@ from backend.app.github_client import (
     parse_github_url,
     fetch_repo_data,
     list_public_repos,
-    fetch_repo_tree,
-    fetch_readme_text,
+    fetch_tree_and_readme,
 )
 from backend.app.analysis import detect_signals
 from backend.app.ai_report import generate_report, AIReportError
@@ -152,8 +151,7 @@ def analyze_repository(repository_id: int) -> dict:
     repository = get_repository_by_id(repository_id)
 
     try:
-        file_paths = fetch_repo_tree(owner, repo, github_data["default_branch"])
-        readme_text = fetch_readme_text(owner, repo)
+        file_paths, readme_text = fetch_tree_and_readme(owner, repo, github_data["default_branch"])
     except requests.HTTPError as error:
         raise HTTPException(
             status_code=502,
@@ -169,7 +167,7 @@ def analyze_repository(repository_id: int) -> dict:
         "description": repository["description"],
         "recent_commit_count": repository["recent_commit_count"],
         **signals,
-        "readme_excerpt": (readme_text or "")[:3000],
+        "readme_excerpt": (readme_text or "")[:1500],
     }
 
     try:
