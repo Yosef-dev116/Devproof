@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- `DELETE /repositories/{id}` endpoint completed and tested
+- First credibility score (v1) completed and tested
 
 **Last Completed**
 - GitHub repository created
@@ -52,11 +52,20 @@
 - `DELETE /repositories/{repository_id}` route added to `main.py`, returns `204 No Content` on success, `404 Not Found` if the ID doesn't exist
 - Verified: deleting an existing repo returns `204` and removes it from `GET /repositories`; deleting a nonexistent ID returns `404`
 - Basic CRUD (create/read/delete) on repositories is now complete
+- New file `backend/app/scoring.py`: `calculate_credibility_score(stars, forks, recent_commit_count)` — v1 formula, weighted sum capped at 100:
+  ```
+  score = min(100, round(stars * 0.01 + forks * 0.02 + recent_commit_count * 2))
+  ```
+- Score is **computed live on every read**, not stored in the database — always reflects the latest saved `stars`/`forks`/`recent_commit_count`, no separate column or migration needed
+- `_attach_credibility_score()` helper added in `main.py`: adds `credibility_score` to a repository dict, `None` if the repo hasn't been fetched from GitHub yet (i.e. `stars` is still `null`)
+- Applied to `GET /repositories`, `GET /repositories/{id}`, and `POST /repositories/{id}/fetch` responses
+- `RepositoryOut` schema extended with `credibility_score: int | None`
+- Verified: unfetched repo → `credibility_score: null`; fetched repo → real number, correctly capped at `100` for a very popular repo (`octocat/Hello-World`, huge stars/forks)
 
 **Next Task**
 - Wait for approval before starting the next feature.
 - Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Revisit if this becomes a real constraint.
-- Not yet built: an actual credibility scoring feature (the core purpose of DevProof) — deferred, needs its own design discussion (what factors, what weights).
+- Credibility score is v1 only (stars/forks/recent commits, fixed weights) — factors and weights are expected to evolve; revisit once real usage/feedback exists.
 
 ---
 
@@ -79,6 +88,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | `GET /repositories/{id}` (single) | Yosef | Done | (none yet — committed directly to `main`) |
 | `POST /repositories/{id}/fetch` (GitHub API) | Yosef | Done | (none yet — committed directly to `main`) |
 | `DELETE /repositories/{id}` | Yosef | Done | (none yet — committed directly to `main`) |
+| Credibility score v1 (stars/forks/commits) | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -175,6 +185,11 @@ docs/
 - Adding new nullable columns to an existing table lets a row exist before all its data is known (e.g. a repo exists in our system before we've ever successfully fetched its GitHub data).
 - `cursor.rowcount` after a `DELETE`/`UPDATE` tells you how many rows were actually affected — useful for knowing whether a `WHERE id = ?` actually matched anything, without a separate lookup.
 - `204 No Content` is the correct HTTP status for a successful action that has nothing to return (e.g. a deletion) — the response body stays empty.
+
+## Derived/Computed Values
+
+- Not every value returned by an API needs to be stored — a value that can always be recalculated from existing data (like a score from `stars`/`forks`/`recent_commit_count`) is simpler to compute on the fly than to keep in sync in the database.
+- Keeping the calculation in its own file (`scoring.py`) as a plain function (no database or FastAPI involved) makes it easy to test and easy to change the formula later without touching routes or the database layer.
 
 ## Environment / Tooling (Windows/PowerShell)
 

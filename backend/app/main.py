@@ -13,9 +13,20 @@ from backend.app.database import (
     delete_repository,
 )
 from backend.app.github_client import parse_github_url, fetch_repo_data
+from backend.app.scoring import calculate_credibility_score
 
 
 app = FastAPI(title="DevProof API")
+
+
+def _attach_credibility_score(repository: dict) -> dict:
+    if repository["stars"] is None:
+        repository["credibility_score"] = None
+    else:
+        repository["credibility_score"] = calculate_credibility_score(
+            repository["stars"], repository["forks"], repository["recent_commit_count"]
+        )
+    return repository
 
 
 @app.on_event("startup")
@@ -38,7 +49,7 @@ def create_repository(repository: RepositoryCreate) -> dict[str, int | str]:
 
 @app.get("/repositories", response_model=list[RepositoryOut])
 def list_repositories() -> list[dict]:
-    return get_all_repositories()
+    return [_attach_credibility_score(repository) for repository in get_all_repositories()]
 
 
 @app.get("/repositories/{repository_id}", response_model=RepositoryOut)
@@ -46,7 +57,7 @@ def get_repository(repository_id: int) -> dict:
     repository = get_repository_by_id(repository_id)
     if repository is None:
         raise HTTPException(status_code=404, detail="repository not found")
-    return repository
+    return _attach_credibility_score(repository)
 
 
 @app.post("/repositories/{repository_id}/fetch", response_model=RepositoryOut)
@@ -74,7 +85,7 @@ def fetch_repository_data(repository_id: int) -> dict:
         recent_commit_count=github_data["recent_commit_count"],
     )
 
-    return get_repository_by_id(repository_id)
+    return _attach_credibility_score(get_repository_by_id(repository_id))
 
 
 @app.delete("/repositories/{repository_id}", status_code=204)
