@@ -59,7 +59,7 @@ npm install
 npm run dev
 ```
 
-This starts the Vite dev server at `http://localhost:5173`. The backend's CORS settings (in `main.py`) allow requests from that origin — if you run the frontend on a different port, add it to `allow_origins` too.
+This starts the Vite dev server at `http://localhost:5180` (pinned in `vite.config.ts` — not Vite's default 5173, chosen to avoid clashing with other unrelated projects that may already use 5173 on your machine). The backend's CORS settings (in `main.py`) allow requests from that origin — if you change the port, update both `vite.config.ts` and `allow_origins`.
 
 ## Current state of the project
 

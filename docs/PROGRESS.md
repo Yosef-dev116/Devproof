@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Frontend scaffold + backend connectivity check completed and tested
+- Full frontend UI (add/list/fetch/delete repositories) completed and tested
 
 **Last Completed**
 - GitHub repository created
@@ -62,17 +62,22 @@
 - `RepositoryOut` schema extended with `credibility_score: int | None`
 - Verified: unfetched repo → `credibility_score: null`; fetched repo → real number, correctly capped at `100` for a very popular repo (`octocat/Hello-World`, huge stars/forks)
 
-- `frontend/` scaffolded with Vite (`npm create vite@latest . -- --template react-ts`) — React + TypeScript project with a dev server (`npm run dev`, port 5173) and hot-reloading
+- `frontend/` scaffolded with Vite (`npm create vite@latest . -- --template react-ts`) — React + TypeScript project with a dev server (`npm run dev`) and hot-reloading
 - Default Vite starter content (logos, sample counter button, unused CSS/assets) removed and replaced with a minimal `App.tsx` that calls the backend's `/health` endpoint and displays the result
-- CORS (`CORSMiddleware`) added to `main.py`, allowing requests from `http://localhost:5173`/`http://127.0.0.1:5173` — required because browsers block cross-origin requests (different port = different origin) unless the server explicitly allows it
+- CORS (`CORSMiddleware`) added to `main.py` — required because browsers block cross-origin requests (different port = different origin) unless the server explicitly allows it
 - Verified live in an actual browser (not just curl): the page renders "Backend status: ok", confirming frontend → backend communication works end-to-end
 - Local dev port changed from 8001 to **8002**: port 8001 developed a stuck/orphaned socket on this machine (a real process no longer owned it, but Windows kept reporting it as listening) during testing; 8002 is now the standard — see decision below
+- `App.tsx` rebuilt into a real UI: a form to add a repository (`POST /repositories`), a table listing all saved repositories with stars/forks/score (`GET /repositories`), and per-row **Fetch** (`POST /repositories/{id}/fetch`) and **Delete** (`DELETE /repositories/{id}`) buttons
+- Uses `useState` to hold the repository list, the form's URL input, and any error message; a shared `loadRepositories()` helper re-fetches the list after every add/fetch/delete so the UI always reflects the backend
+- `vite.config.ts` pinned to a fixed dev server port (`5180`, `strictPort: true`) instead of Vite's auto-increment behavior — avoids depending on whichever port happens to be free (this machine has other, unrelated projects that also use Vite's default port 5173)
+- `main.py`'s CORS `allow_origins` updated to match the fixed frontend port
+- Verified fully in a real browser: added a new repo through the UI, confirmed it appeared with empty stats, triggered its GitHub fetch, and confirmed real stars/forks/score appeared after re-render — the complete add → fetch → score loop works through the actual UI, not just direct API calls
 
 **Next Task**
 - Wait for approval before starting the next feature.
 - Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Revisit if this becomes a real constraint.
 - Credibility score is v1 only (stars/forks/recent commits, fixed weights) — factors and weights are expected to evolve; revisit once real usage/feedback exists.
-- Frontend only has the connectivity check so far — no real UI for adding/viewing repositories yet.
+- No loading states, styling, or input validation on the frontend yet (e.g. no feedback while a fetch is in progress) — functional but bare-bones.
 
 ---
 
@@ -97,6 +102,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | `DELETE /repositories/{id}` | Yosef | Done | (none yet — committed directly to `main`) |
 | Credibility score v1 (stars/forks/commits) | Yosef | Done | (none yet — committed directly to `main`) |
 | Frontend scaffold + backend connectivity check | Yosef | Done | (none yet — committed directly to `main`) |
+| Frontend UI: add/list/fetch/delete repositories | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -200,6 +206,9 @@ docs/
 - `npm run dev` starts the dev server; `npm run build` compiles a production build (also catches TypeScript errors — useful as a sanity check even before deploying anything).
 - React's `useEffect` runs code after the component renders — used here to trigger the `/health` fetch once when the page loads, rather than on every re-render.
 - **CORS (Cross-Origin Resource Sharing):** browsers block a webpage from calling an API on a different origin (different port counts as different, even on the same machine) unless that server explicitly allows it via response headers. FastAPI's `CORSMiddleware` adds those headers for origins you list in `allow_origins`.
+- A **controlled input** in React (`value={url}` + `onChange`) keeps the input's displayed value in sync with component state, so the current text is always available in JavaScript, not just visible on screen.
+- Pinning a dev server to a fixed port (`vite.config.ts` → `server.port` + `strictPort: true`) avoids surprises when other unrelated projects on the same machine also default to the same port.
+- After any action that changes backend data (add/fetch/delete), re-fetching the full list is a simple way to keep the UI in sync — no separate "update this one row in place" logic needed for a small app like this.
 
 ## Derived/Computed Values
 
