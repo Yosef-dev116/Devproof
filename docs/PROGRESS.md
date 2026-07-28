@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Visual styling + `/analyze` latency reduction (27s → ~6-8s) completed and tested
+- GitHub API authentication completed and tested: rate limit raised from 60/hr to 5000/hr
 
 **Last Completed**
 - GitHub repository created
@@ -112,9 +112,13 @@
 - Removed leftover fixed-width/centered marketing-page layout from the original Vite scaffold's `#root` rule in `index.css` (was fighting with the new app layout).
 - Verified: computed styles checked directly in a live browser tab (border-radius, box-shadow, button colors, score-badge colors change correctly with score value) since this session's screenshot tool was unavailable; then a full live analysis run through the actual styled UI confirmed the report renders correctly end-to-end.
 
+**GitHub API authentication:**
+- `github_client.py` reads `GITHUB_TOKEN` from the environment at import time (after `load_dotenv()` has already run in `main.py`, since `github_client` is imported after that call) and attaches it as `Authorization: Bearer <token>` on the shared `_session` if present. No token → falls back to unauthenticated (still works, just at the lower rate limit) — nothing breaks for a collaborator who hasn't set one up yet.
+- `backend/.env.example` updated to document the optional `GITHUB_TOKEN` alongside `OPENAI_API_KEY`.
+- Verified three ways: (1) confirmed the `Authorization` header is actually present on the session object, (2) called GitHub's own `/rate_limit` endpoint through that same session and confirmed it returns `limit: 5000` (not `60`), (3) ran a full `/analyze` end-to-end afterward to confirm no regression.
+
 **Next Task**
 - Wait for approval before starting the next feature.
-- Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Higher risk now given `/analyze` makes 4 GitHub calls per run; revisit if demo prep starts hitting it.
 - No responsive/mobile-specific styling verified yet — only tested at desktop viewport.
 
 ---
@@ -145,6 +149,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Frontend UX: loading states + client-side validation | Yosef | Done | (none yet — committed directly to `main`) |
 | GitHub username→repo picker + AI report generation (pitch MVP core) | Yosef | Done | (none yet — committed directly to `main`) |
 | Visual styling + `/analyze` latency reduction | Yosef | Done | (none yet — committed directly to `main`) |
+| GitHub API authentication (60/hr → 5000/hr) | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -276,6 +281,8 @@ docs/
 - `concurrent.futures.ThreadPoolExecutor` is a straightforward way to run a few blocking calls (like `requests.get`) concurrently in ordinary synchronous Python, without needing `async`/`await` everywhere.
 - A shared `requests.Session()` reused across multiple calls to the same host avoids repeating the TCP/TLS handshake for every single request — a real, measurable latency win when making several calls to the same API in a row.
 - With an AI API call in the pipeline, the model's *output length* is often the biggest lever on latency — asking for shorter, capped-length responses (word limits, fixed list sizes) can meaningfully speed up generation, separate from which model is used.
+- Most public APIs (GitHub included) rate-limit unauthenticated requests far more aggressively than authenticated ones — attaching a personal access token via an `Authorization` header is often a five-minute fix for what would otherwise become a real production/demo blocker.
+- Verifying "is my token actually being used and accepted" is worth doing explicitly (checking the header is set, then calling the API's own rate-limit/whoami endpoint) rather than assuming it works just because no error was thrown.
 
 ## Environment / Tooling (Windows/PowerShell)
 

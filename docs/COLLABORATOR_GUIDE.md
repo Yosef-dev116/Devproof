@@ -48,13 +48,14 @@ cd backend
 pip install -r requirements.txt
 ```
 
-Create `backend/.env` (git-ignored, never commit it) with your own OpenAI key:
+Create `backend/.env` (git-ignored, never commit it):
 
 ```
 OPENAI_API_KEY=your-real-key-here
+GITHUB_TOKEN=your-github-personal-access-token-here
 ```
 
-`main.py` loads this automatically on startup via `python-dotenv`. Without it, `/repositories/{id}/analyze` will fail (the `/fetch` and list/CRUD endpoints don't need it).
+`main.py` loads this automatically on startup via `python-dotenv`. `OPENAI_API_KEY` is required for `/repositories/{id}/analyze` (the `/fetch` and list/CRUD endpoints don't need it). `GITHUB_TOKEN` is optional but strongly recommended — without it, GitHub API calls are capped at 60/hour total; with a token (no special scopes needed for public repo reads), that jumps to 5000/hour. Generate one at `github.com/settings/tokens`.
 
 Run the server from the repo root (not from inside `backend/`), since imports use the `backend.app.` prefix:
 

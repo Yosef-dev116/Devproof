@@ -1,3 +1,4 @@
+import os
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -5,6 +6,10 @@ import requests
 GITHUB_API_BASE = "https://api.github.com"
 
 _session = requests.Session()
+
+_github_token = os.environ.get("GITHUB_TOKEN")
+if _github_token:
+    _session.headers.update({"Authorization": f"Bearer {_github_token}"})
 
 
 def parse_github_url(url: str) -> tuple[str, str]:
