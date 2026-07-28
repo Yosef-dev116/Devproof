@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Fixed a real bug: empty (zero-commit) GitHub repos caused `/fetch` to fail with a generic `502`
+- Frontend UX polish: loading states + client-side URL validation completed and tested
 
 **Last Completed**
 - GitHub repository created
@@ -77,11 +77,15 @@
 - Wait for approval before starting the next feature.
 - Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Revisit if this becomes a real constraint.
 - Credibility score is v1 only (stars/forks/recent commits, fixed weights) — factors and weights are expected to evolve; revisit once real usage/feedback exists.
-- No loading states, styling, or input validation on the frontend yet (e.g. no feedback while a fetch is in progress) — functional but bare-bones.
+- No visual styling on the frontend yet — functional but plain (unstyled HTML table/form).
 - Found via real manual testing (not planned): `POST /repositories/{id}/fetch` returned a generic `502 Bad Gateway` for some repos. Root cause: GitHub's `/repos/{owner}/{repo}/commits` endpoint returns `409 Conflict` (not an empty list) for a repository with zero commits — undocumented-feeling but is GitHub's actual documented behavior. Our code only checked for `404`, so this fell through to the generic `502` branch.
 - Fix in `github_client.py`: `fetch_repo_data()` now checks for `status_code == 409` on the commits call specifically and treats it as `recent_commit_count = 0`, instead of raising.
 - Fix in `main.py`: the generic `502` error `detail` now includes GitHub's actual returned status code (e.g. `"failed to fetch data from GitHub (GitHub returned 403)"`), so any future failure is diagnosable from the response alone instead of requiring server-side log digging.
 - Verified: existing working repos (`octocat/Hello-World`, `fastapi/fastapi`, `psf/requests`) still work correctly after the change; no regression.
+- `App.tsx` gained three new pieces of state: `isAdding`, `fetchingId`, `deletingId` — track whether an add/fetch/delete is currently in flight
+- Add form: submit button now shows "Adding..." and disables while the request is in flight; Fetch/Delete buttons per row show "Fetching..."/"Deleting..." and disable (both buttons in that row, to prevent overlapping actions on the same repo) while their request is running
+- Client-side validation added: a regex (`GITHUB_REPO_URL_PATTERN`) rejects obviously-invalid URLs (missing `https://github.com/owner/repo` shape) before ever sending a request, showing an inline error immediately
+- Verified in a real browser: an invalid URL is rejected instantly with no network request; a real fetch correctly shows "Fetching..." with the button disabled mid-flight, then reverts once the real GitHub data lands
 
 ---
 
@@ -107,6 +111,8 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Credibility score v1 (stars/forks/commits) | Yosef | Done | (none yet — committed directly to `main`) |
 | Frontend scaffold + backend connectivity check | Yosef | Done | (none yet — committed directly to `main`) |
 | Frontend UI: add/list/fetch/delete repositories | Yosef | Done | (none yet — committed directly to `main`) |
+| Fix: 502 on zero-commit repos | Yosef | Done | (none yet — committed directly to `main`) |
+| Frontend UX: loading states + client-side validation | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -215,6 +221,8 @@ docs/
 - A **controlled input** in React (`value={url}` + `onChange`) keeps the input's displayed value in sync with component state, so the current text is always available in JavaScript, not just visible on screen.
 - Pinning a dev server to a fixed port (`vite.config.ts` → `server.port` + `strictPort: true`) avoids surprises when other unrelated projects on the same machine also default to the same port.
 - After any action that changes backend data (add/fetch/delete), re-fetching the full list is a simple way to keep the UI in sync — no separate "update this one row in place" logic needed for a small app like this.
+- A boolean/id piece of state (e.g. `isAdding`, `fetchingId`) tracking "is a request currently in flight" lets the UI show a loading indicator and disable controls to prevent duplicate submissions — a `try`/`finally` ensures that state resets even if the request fails.
+- Client-side validation (checking input shape before sending a request) gives instant feedback and avoids an unnecessary round-trip for obviously-invalid input — but it doesn't replace server-side validation (the backend's own Pydantic schema still guards against bad data sent by any other client).
 
 ## Derived/Computed Values
 
