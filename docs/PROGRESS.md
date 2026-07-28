@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- `POST /repositories` endpoint completed and tested
+- `GET /repositories` endpoint completed and tested
 
 **Last Completed**
 - GitHub repository created
@@ -31,6 +31,10 @@
 - Discovered local Apache (`httpd`) was already bound to port 8000; ran backend on port 8001 instead rather than stopping Apache
 - Duplicate-URL case now handled cleanly: `create_repository` wraps `insert_repository` in `try`/`except sqlite3.IntegrityError`, raising `HTTPException(status_code=409, detail="repository already exists")` instead of letting it crash as a raw `500`
 - Verified: duplicate URL now returns `409 Conflict` with `{"detail": "repository already exists"}`; new URLs still return `201 Created` as before
+- `RepositoryOut` schema added (`schemas.py`): `id`, `url`, `created_at` — describes the shape of a repository row returned to clients
+- `get_all_repositories()` added to `database.py`: runs a `SELECT`, uses `sqlite3.Row` + `dict(row)` to convert each row into a plain dict
+- `GET /repositories` route added to `main.py` with `response_model=list[RepositoryOut]`, returns every saved repository as a JSON array
+- Verified: returns all previously-inserted repositories with correct `id`, `url`, `created_at` fields
 
 **Next Task**
 - Wait for approval before starting the next feature.
@@ -52,6 +56,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Task | Assignee | Status | Branch |
 |---|---|---|---|
 | Duplicate-URL handling (`409 Conflict`) | Yosef | Done | (none yet — committed directly to `main`) |
+| `GET /repositories` (list all) | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -128,6 +133,13 @@ docs/
 - `status_code=201` on `@app.post(...)` overrides FastAPI's default `200`, since `201 Created` is the correct status for a successful creation.
 - `cursor.lastrowid` returns the auto-incremented primary key of the row just inserted.
 - A `UNIQUE` column raises `sqlite3.IntegrityError` on a duplicate insert; if uncaught, FastAPI turns any unhandled exception into a generic `500 Internal Server Error`.
+
+## Reading Data & Response Models
+
+- `sqlite3.Row` makes query results accessible by column name (like a dict), instead of plain unlabeled tuples; setting `connection.row_factory = sqlite3.Row` before a `SELECT` enables this.
+- `dict(row)` converts a `sqlite3.Row` into a plain Python dict, which FastAPI/Pydantic can then work with directly.
+- `response_model=list[RepositoryOut]` on a route tells FastAPI the exact shape of what it returns — it validates and filters the output to match that schema, and documents it automatically (visible at `/docs`).
+- A schema used for what a client *sends* (`RepositoryCreate`) and one used for what the server *returns* (`RepositoryOut`) are often different — output can include server-generated fields like `id` and `created_at` that the client never provided.
 
 ## Environment / Tooling (Windows/PowerShell)
 

@@ -2,8 +2,8 @@ import sqlite3
 
 from fastapi import FastAPI, HTTPException
 
-from backend.app.schemas import RepositoryCreate
-from backend.app.database import initialize_database, insert_repository
+from backend.app.schemas import RepositoryCreate, RepositoryOut
+from backend.app.database import initialize_database, insert_repository, get_all_repositories
 
 
 app = FastAPI(title="DevProof API")
@@ -25,3 +25,8 @@ def create_repository(repository: RepositoryCreate) -> dict[str, int | str]:
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=409, detail="repository already exists")
     return {"id": new_id, "url": repository.url}
+
+
+@app.get("/repositories", response_model=list[RepositoryOut])
+def list_repositories() -> list[dict]:
+    return get_all_repositories()

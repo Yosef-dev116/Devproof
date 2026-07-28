@@ -29,3 +29,10 @@ def insert_repository(url: str) -> int:
             (url,),
         )
         return cursor.lastrowid
+
+
+def get_all_repositories() -> list[dict]:
+    with get_connection() as connection:
+        connection.row_factory = sqlite3.Row
+        cursor = connection.execute("SELECT id, url, created_at FROM repositories")
+        return [dict(row) for row in cursor.fetchall()]
