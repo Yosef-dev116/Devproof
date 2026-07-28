@@ -1,5 +1,6 @@
 import sqlite3
 
+import requests
 from fastapi import FastAPI, HTTPException
 
 from backend.app.schemas import RepositoryCreate, RepositoryOut
@@ -8,7 +9,9 @@ from backend.app.database import (
     insert_repository,
     get_all_repositories,
     get_repository_by_id,
+    update_repository_github_data,
 )
+from backend.app.github_client import parse_github_url, fetch_repo_data
 
 
 app = FastAPI(title="DevProof API")
@@ -43,3 +46,31 @@ def get_repository(repository_id: int) -> dict:
     if repository is None:
         raise HTTPException(status_code=404, detail="repository not found")
     return repository
+
+
+@app.post("/repositories/{repository_id}/fetch", response_model=RepositoryOut)
+def fetch_repository_data(repository_id: int) -> dict:
+    repository = get_repository_by_id(repository_id)
+    if repository is None:
+        raise HTTPException(status_code=404, detail="repository not found")
+
+    owner, repo = parse_github_url(repository["url"])
+
+    try:
+        github_data = fetch_repo_data(owner, repo)
+    except requests.HTTPError as error:
+        if error.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="GitHub repository not found")
+        raise HTTPException(status_code=502, detail="failed to fetch data from GitHub")
+
+    update_repository_github_data(
+        repository_id,
+        stars=github_data["stars"],
+        forks=github_data["forks"],
+        language=github_data["language"],
+        description=github_data["description"],
+        owner=github_data["owner"],
+        recent_commit_count=github_data["recent_commit_count"],
+    )
+
+    return get_repository_by_id(repository_id)

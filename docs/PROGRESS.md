@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- `GET /repositories/{id}` endpoint completed and tested
+- `POST /repositories/{id}/fetch` (GitHub API integration) completed and tested
 
 **Last Completed**
 - GitHub repository created
@@ -38,9 +38,19 @@
 - `get_repository_by_id()` added to `database.py`: `SELECT ... WHERE id = ?`, returns `None` if no row matches (via `cursor.fetchone()`)
 - `GET /repositories/{repository_id}` route added to `main.py`: path parameter typed as `int`, returns `404 Not Found` with `{"detail": "repository not found"}` if `get_repository_by_id` returns `None`
 - Verified: existing ID → `200` with repository data; missing ID → `404`
+- `requests` library added to `requirements.txt` for calling the real GitHub API
+- `repositories` table extended with new nullable columns: `stars`, `forks`, `language`, `description`, `owner`, `recent_commit_count`, `last_fetched_at`
+- New file `backend/app/github_client.py`: `parse_github_url()` extracts owner/repo from a saved URL; `fetch_repo_data()` calls GitHub's REST API (repo info + recent commits) and returns a plain dict
+- `update_repository_github_data()` added to `database.py` (parameterized `UPDATE`, sets `last_fetched_at` via `CURRENT_TIMESTAMP`)
+- New route `POST /repositories/{repository_id}/fetch` in `main.py`: looks up the repo, parses its URL, calls GitHub, saves the result, returns the updated `RepositoryOut`
+- Errors from GitHub are translated to clean HTTP responses: GitHub 404 → our `404 Not Found` ("GitHub repository not found"); any other GitHub API failure → `502 Bad Gateway`
+- `RepositoryOut` schema extended with the same new optional fields, all defaulting to `None`
+- Local `devproof.db` deleted and regenerated to pick up the new columns (git-ignored test data only, no real data lost)
+- Verified live against real GitHub repos: successful fetch populates real stars/forks/description/owner/commit count; a URL pointing to a nonexistent GitHub repo returns `404` and leaves that row's fields `null`
 
 **Next Task**
 - Wait for approval before starting the next feature.
+- Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Revisit if this becomes a real constraint.
 
 ---
 
@@ -61,6 +71,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Duplicate-URL handling (`409 Conflict`) | Yosef | Done | (none yet — committed directly to `main`) |
 | `GET /repositories` (list all) | Yosef | Done | (none yet — committed directly to `main`) |
 | `GET /repositories/{id}` (single) | Yosef | Done | (none yet — committed directly to `main`) |
+| `POST /repositories/{id}/fetch` (GitHub API) | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -147,6 +158,14 @@ docs/
 - A route path like `/repositories/{repository_id}` uses `{}` to mark a **path parameter**; FastAPI passes that piece of the URL into the matching function argument, converting it to the type hint given (`int` here).
 - `cursor.fetchone()` returns a single row (or `None` if no match), vs. `fetchall()` which returns every matching row as a list — use whichever matches how many results you expect.
 - Returning `None` from a database-access function (rather than raising an error) lets the calling route decide how to respond (here: a `404`) — the database layer just reports "found" or "not found," it doesn't decide what that means over HTTP.
+
+## Calling External APIs
+
+- The `requests` library sends real HTTP requests to other servers from Python code, just like a browser or `curl` would.
+- `response.raise_for_status()` raises an exception (`requests.HTTPError`) automatically if the response status is an error (4xx/5xx), so failures don't silently get treated as success.
+- Separating "talk to an external API" code into its own file (`github_client.py`) keeps the same separation-of-concerns principle used for `database.py` — routes shouldn't know the details of *how* data is fetched, just that a function gives them back a dict.
+- Public APIs are often rate-limited (GitHub allows 60 unauthenticated requests/hour per IP) — a real constraint to design around later (e.g. with an API token), not something to ignore in production.
+- Adding new nullable columns to an existing table lets a row exist before all its data is known (e.g. a repo exists in our system before we've ever successfully fetched its GitHub data).
 
 ## Environment / Tooling (Windows/PowerShell)
 

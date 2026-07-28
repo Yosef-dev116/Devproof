@@ -16,7 +16,14 @@ def initialize_database() -> None:
             CREATE TABLE IF NOT EXISTS repositories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 url TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                stars INTEGER,
+                forks INTEGER,
+                language TEXT,
+                description TEXT,
+                owner TEXT,
+                recent_commit_count INTEGER,
+                last_fetched_at TEXT
             )
             """
         )
@@ -34,7 +41,7 @@ def insert_repository(url: str) -> int:
 def get_all_repositories() -> list[dict]:
     with get_connection() as connection:
         connection.row_factory = sqlite3.Row
-        cursor = connection.execute("SELECT id, url, created_at FROM repositories")
+        cursor = connection.execute("SELECT * FROM repositories")
         return [dict(row) for row in cursor.fetchall()]
 
 
@@ -42,8 +49,34 @@ def get_repository_by_id(repository_id: int) -> dict | None:
     with get_connection() as connection:
         connection.row_factory = sqlite3.Row
         cursor = connection.execute(
-            "SELECT id, url, created_at FROM repositories WHERE id = ?",
+            "SELECT * FROM repositories WHERE id = ?",
             (repository_id,),
         )
         row = cursor.fetchone()
         return dict(row) if row is not None else None
+
+
+def update_repository_github_data(
+    repository_id: int,
+    stars: int,
+    forks: int,
+    language: str | None,
+    description: str | None,
+    owner: str,
+    recent_commit_count: int,
+) -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE repositories
+            SET stars = ?,
+                forks = ?,
+                language = ?,
+                description = ?,
+                owner = ?,
+                recent_commit_count = ?,
+                last_fetched_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (stars, forks, language, description, owner, recent_commit_count, repository_id),
+        )
