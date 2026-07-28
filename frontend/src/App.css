@@ -312,4 +312,61 @@ input[type='text']:disabled {
   display: flex;
   align-items: center;
   white-space: nowrap;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* Mobile */
+
+@media (max-width: 640px) {
+  .app {
+    padding: 12px 12px 32px;
+  }
+
+  .app-header h1 {
+    font-size: 30px;
+    margin: 12px 0 4px;
+  }
+
+  .card {
+    padding: 16px;
+  }
+
+  .inline-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  input[type='text'] {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .repo-picker-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .repo-picker-item .btn {
+    width: 100%;
+  }
+
+  .overall-score {
+    flex-wrap: wrap;
+  }
+
+  .category-item {
+    align-items: flex-start;
+  }
+
+  .repo-table {
+    min-width: 480px;
+  }
 }

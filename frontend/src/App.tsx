@@ -303,6 +303,7 @@ function App() {
         </form>
         {error && <p className="error-text">{error}</p>}
 
+        <div className="table-scroll">
         <table className="repo-table">
           <thead>
             <tr>
@@ -352,6 +353,7 @@ function App() {
             ))}
           </tbody>
         </table>
+        </div>
       </section>
     </div>
   )

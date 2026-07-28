@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- GitHub API authentication completed and tested: rate limit raised from 60/hr to 5000/hr
+- Mobile-responsive frontend styling added (CSS verified, live-viewport check not fully verified this session — see note below)
 
 **Last Completed**
 - GitHub repository created
@@ -117,8 +117,14 @@
 - `backend/.env.example` updated to document the optional `GITHUB_TOKEN` alongside `OPENAI_API_KEY`.
 - Verified three ways: (1) confirmed the `Authorization` header is actually present on the session object, (2) called GitHub's own `/rate_limit` endpoint through that same session and confirmed it returns `limit: 5000` (not `60`), (3) ran a full `/analyze` end-to-end afterward to confirm no regression.
 
+**Mobile-responsive styling:**
+- `App.tsx`: history table wrapped in a new `.table-scroll` div (`overflow-x: auto`) — HTML tables don't reflow at narrow widths, so this lets it scroll horizontally instead of squishing/breaking.
+- `App.css`: added a `@media (max-width: 640px)` block — reduces `.app`/`.card` padding, shrinks the `h1`, stacks `.inline-form` and `.repo-picker-item` vertically (full-width inputs/buttons instead of a cramped row), lets `.row-actions` wrap, and gives `.repo-table` a `min-width: 480px` inside the new scroll wrapper so it scrolls cleanly instead of breaking layout.
+- **Verification limitation:** this session's browser-automation tool had a broken `resize_window` (window resize didn't actually change the reported viewport width, `window.innerWidth` stayed at the desktop size regardless) on top of the already-broken screenshot API from earlier in the session. Confirmed instead that the media query rule parses correctly and is present in the loaded stylesheet (`document.styleSheets`), and that both `tsc -b` and a full production `vite build` succeed with no errors. **The actual narrow-viewport visual layout has not been eyeballed this session** — worth a quick manual check (resize the browser window, or DevTools' device toolbar) before relying on it for a demo.
+
 **Next Task**
 - Wait for approval before starting the next feature.
+- Do a manual visual check of the mobile layout (browser resize or DevTools device toolbar) — not verified live this session due to tooling limitations.
 - No responsive/mobile-specific styling verified yet — only tested at desktop viewport.
 
 ---
@@ -150,6 +156,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | GitHub username→repo picker + AI report generation (pitch MVP core) | Yosef | Done | (none yet — committed directly to `main`) |
 | Visual styling + `/analyze` latency reduction | Yosef | Done | (none yet — committed directly to `main`) |
 | GitHub API authentication (60/hr → 5000/hr) | Yosef | Done | (none yet — committed directly to `main`) |
+| Mobile-responsive styling | Yosef | Done (visual check pending) | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
