@@ -81,7 +81,10 @@ def fetch_repository_data(repository_id: int) -> dict:
     except requests.HTTPError as error:
         if error.response.status_code == 404:
             raise HTTPException(status_code=404, detail="GitHub repository not found")
-        raise HTTPException(status_code=502, detail="failed to fetch data from GitHub")
+        raise HTTPException(
+            status_code=502,
+            detail=f"failed to fetch data from GitHub (GitHub returned {error.response.status_code})",
+        )
 
     update_repository_github_data(
         repository_id,

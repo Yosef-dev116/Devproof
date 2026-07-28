@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Full frontend UI (add/list/fetch/delete repositories) completed and tested
+- Fixed a real bug: empty (zero-commit) GitHub repos caused `/fetch` to fail with a generic `502`
 
 **Last Completed**
 - GitHub repository created
@@ -78,6 +78,10 @@
 - Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Revisit if this becomes a real constraint.
 - Credibility score is v1 only (stars/forks/recent commits, fixed weights) — factors and weights are expected to evolve; revisit once real usage/feedback exists.
 - No loading states, styling, or input validation on the frontend yet (e.g. no feedback while a fetch is in progress) — functional but bare-bones.
+- Found via real manual testing (not planned): `POST /repositories/{id}/fetch` returned a generic `502 Bad Gateway` for some repos. Root cause: GitHub's `/repos/{owner}/{repo}/commits` endpoint returns `409 Conflict` (not an empty list) for a repository with zero commits — undocumented-feeling but is GitHub's actual documented behavior. Our code only checked for `404`, so this fell through to the generic `502` branch.
+- Fix in `github_client.py`: `fetch_repo_data()` now checks for `status_code == 409` on the commits call specifically and treats it as `recent_commit_count = 0`, instead of raising.
+- Fix in `main.py`: the generic `502` error `detail` now includes GitHub's actual returned status code (e.g. `"failed to fetch data from GitHub (GitHub returned 403)"`), so any future failure is diagnosable from the response alone instead of requiring server-side log digging.
+- Verified: existing working repos (`octocat/Hello-World`, `fastapi/fastapi`, `psf/requests`) still work correctly after the change; no regression.
 
 ---
 
@@ -197,6 +201,8 @@ docs/
 - Separating "talk to an external API" code into its own file (`github_client.py`) keeps the same separation-of-concerns principle used for `database.py` — routes shouldn't know the details of *how* data is fetched, just that a function gives them back a dict.
 - Public APIs are often rate-limited (GitHub allows 60 unauthenticated requests/hour per IP) — a real constraint to design around later (e.g. with an API token), not something to ignore in production.
 - Adding new nullable columns to an existing table lets a row exist before all its data is known (e.g. a repo exists in our system before we've ever successfully fetched its GitHub data).
+- A public API's error responses aren't always intuitive — e.g. GitHub returns `409 Conflict`, not an empty list, for "this repo has no commits yet." Always handle documented edge cases explicitly rather than assuming every non-happy-path case is a clean 404 or empty result.
+- Including the underlying error's real status code in your own error message (rather than a single generic message for every non-404 failure) makes future debugging possible without needing server logs.
 - `cursor.rowcount` after a `DELETE`/`UPDATE` tells you how many rows were actually affected — useful for knowing whether a `WHERE id = ?` actually matched anything, without a separate lookup.
 - `204 No Content` is the correct HTTP status for a successful action that has nothing to return (e.g. a deletion) — the response body stays empty.
 
