@@ -10,6 +10,7 @@ from backend.app.database import (
     get_all_repositories,
     get_repository_by_id,
     update_repository_github_data,
+    delete_repository,
 )
 from backend.app.github_client import parse_github_url, fetch_repo_data
 
@@ -74,3 +75,10 @@ def fetch_repository_data(repository_id: int) -> dict:
     )
 
     return get_repository_by_id(repository_id)
+
+
+@app.delete("/repositories/{repository_id}", status_code=204)
+def remove_repository(repository_id: int) -> None:
+    deleted = delete_repository(repository_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="repository not found")

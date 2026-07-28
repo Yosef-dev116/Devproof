@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- `POST /repositories/{id}/fetch` (GitHub API integration) completed and tested
+- `DELETE /repositories/{id}` endpoint completed and tested
 
 **Last Completed**
 - GitHub repository created
@@ -48,9 +48,15 @@
 - Local `devproof.db` deleted and regenerated to pick up the new columns (git-ignored test data only, no real data lost)
 - Verified live against real GitHub repos: successful fetch populates real stars/forks/description/owner/commit count; a URL pointing to a nonexistent GitHub repo returns `404` and leaves that row's fields `null`
 
+- `delete_repository()` added to `database.py`: parameterized `DELETE`, returns `True`/`False` based on `cursor.rowcount` (whether a row actually matched)
+- `DELETE /repositories/{repository_id}` route added to `main.py`, returns `204 No Content` on success, `404 Not Found` if the ID doesn't exist
+- Verified: deleting an existing repo returns `204` and removes it from `GET /repositories`; deleting a nonexistent ID returns `404`
+- Basic CRUD (create/read/delete) on repositories is now complete
+
 **Next Task**
 - Wait for approval before starting the next feature.
 - Not yet handled: GitHub's unauthenticated rate limit (60 requests/hour/IP) — no retry/backoff or API token support yet. Revisit if this becomes a real constraint.
+- Not yet built: an actual credibility scoring feature (the core purpose of DevProof) — deferred, needs its own design discussion (what factors, what weights).
 
 ---
 
@@ -72,6 +78,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | `GET /repositories` (list all) | Yosef | Done | (none yet — committed directly to `main`) |
 | `GET /repositories/{id}` (single) | Yosef | Done | (none yet — committed directly to `main`) |
 | `POST /repositories/{id}/fetch` (GitHub API) | Yosef | Done | (none yet — committed directly to `main`) |
+| `DELETE /repositories/{id}` | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -166,6 +173,8 @@ docs/
 - Separating "talk to an external API" code into its own file (`github_client.py`) keeps the same separation-of-concerns principle used for `database.py` — routes shouldn't know the details of *how* data is fetched, just that a function gives them back a dict.
 - Public APIs are often rate-limited (GitHub allows 60 unauthenticated requests/hour per IP) — a real constraint to design around later (e.g. with an API token), not something to ignore in production.
 - Adding new nullable columns to an existing table lets a row exist before all its data is known (e.g. a repo exists in our system before we've ever successfully fetched its GitHub data).
+- `cursor.rowcount` after a `DELETE`/`UPDATE` tells you how many rows were actually affected — useful for knowing whether a `WHERE id = ?` actually matched anything, without a separate lookup.
+- `204 No Content` is the correct HTTP status for a successful action that has nothing to return (e.g. a deletion) — the response body stays empty.
 
 ## Environment / Tooling (Windows/PowerShell)
 

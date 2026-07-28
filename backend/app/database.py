@@ -80,3 +80,12 @@ def update_repository_github_data(
             """,
             (stars, forks, language, description, owner, recent_commit_count, repository_id),
         )
+
+
+def delete_repository(repository_id: int) -> bool:
+    with get_connection() as connection:
+        cursor = connection.execute(
+            "DELETE FROM repositories WHERE id = ?",
+            (repository_id,),
+        )
+        return cursor.rowcount > 0
