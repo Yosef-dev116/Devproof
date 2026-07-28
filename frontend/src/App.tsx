@@ -50,16 +50,13 @@ function ScoreBadge({ score }: { score: number }) {
 
 function App() {
   const [repositories, setRepositories] = useState<Repository[]>([])
-  const [url, setUrl] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [isAdding, setIsAdding] = useState(false)
   const [fetchingId, setFetchingId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
-  const [username, setUsername] = useState('')
+  const [query, setQuery] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [githubRepos, setGithubRepos] = useState<GithubRepoSummary[]>([])
-  const [isLoadingRepos, setIsLoadingRepos] = useState(false)
-  const [usernameError, setUsernameError] = useState<string | null>(null)
   const [selectingUrl, setSelectingUrl] = useState<string | null>(null)
   const [activeRepositoryId, setActiveRepositoryId] = useState<number | null>(null)
 
@@ -75,38 +72,6 @@ function App() {
   useEffect(() => {
     loadRepositories()
   }, [])
-
-  const handleAdd = async (event: FormEvent) => {
-    event.preventDefault()
-    setError(null)
-
-    if (!GITHUB_REPO_URL_PATTERN.test(url.trim())) {
-      setError('Enter a valid GitHub repository URL, e.g. https://github.com/owner/repo')
-      return
-    }
-
-    setIsAdding(true)
-    try {
-      const response = await fetch(`${API_BASE}/repositories`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        setError(data.detail)
-        return
-      }
-
-      setUrl('')
-      loadRepositories()
-    } catch {
-      setError('Could not reach the backend server. Is it running?')
-    } finally {
-      setIsAdding(false)
-    }
-  }
 
   const handleFetch = async (id: number) => {
     setFetchingId(id)
@@ -128,67 +93,79 @@ function App() {
     }
   }
 
-  const handleLoadGithubRepos = async (event: FormEvent) => {
-    event.preventDefault()
-    setUsernameError(null)
-    setGithubRepos([])
-    setIsLoadingRepos(true)
-    try {
-      const response = await fetch(`${API_BASE}/github/${username.trim()}/repos`)
-      if (!response.ok) {
-        const data = await response.json()
-        setUsernameError(data.detail)
+  const addAndAnalyze = async (targetUrl: string) => {
+    const createResponse = await fetch(`${API_BASE}/repositories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: targetUrl }),
+    })
+
+    let repositoryId: number
+    if (createResponse.status === 409) {
+      const allRepos = await loadRepositories()
+      const existing = allRepos.find((candidate) => candidate.url === targetUrl)
+      if (!existing) {
+        setError('Repository already exists but could not be located.')
         return
       }
-      setGithubRepos(await response.json())
+      repositoryId = existing.id
+    } else if (!createResponse.ok) {
+      const data = await createResponse.json()
+      setError(data.detail)
+      return
+    } else {
+      repositoryId = (await createResponse.json()).id
+    }
+
+    const analyzeResponse = await fetch(`${API_BASE}/repositories/${repositoryId}/analyze`, {
+      method: 'POST',
+    })
+
+    if (!analyzeResponse.ok) {
+      const data = await analyzeResponse.json()
+      setError(data.detail)
+      return
+    }
+
+    setActiveRepositoryId(repositoryId)
+    await loadRepositories()
+  }
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    setGithubRepos([])
+
+    const trimmed = query.trim()
+    if (!trimmed) return
+
+    setIsSubmitting(true)
+    try {
+      if (GITHUB_REPO_URL_PATTERN.test(trimmed)) {
+        await addAndAnalyze(trimmed)
+      } else {
+        const response = await fetch(`${API_BASE}/github/${trimmed}/repos`)
+        if (!response.ok) {
+          const data = await response.json()
+          setError(data.detail)
+          return
+        }
+        setGithubRepos(await response.json())
+      }
     } catch {
-      setUsernameError('Could not reach the backend server. Is it running?')
+      setError('Could not reach the backend server. Is it running?')
     } finally {
-      setIsLoadingRepos(false)
+      setIsSubmitting(false)
     }
   }
 
   const handleSelectRepo = async (repo: GithubRepoSummary) => {
     setSelectingUrl(repo.html_url)
-    setUsernameError(null)
+    setError(null)
     try {
-      const createResponse = await fetch(`${API_BASE}/repositories`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: repo.html_url }),
-      })
-
-      let repositoryId: number
-      if (createResponse.status === 409) {
-        const allRepos = await loadRepositories()
-        const existing = allRepos.find((candidate) => candidate.url === repo.html_url)
-        if (!existing) {
-          setUsernameError('Repository already exists but could not be located.')
-          return
-        }
-        repositoryId = existing.id
-      } else if (!createResponse.ok) {
-        const data = await createResponse.json()
-        setUsernameError(data.detail)
-        return
-      } else {
-        repositoryId = (await createResponse.json()).id
-      }
-
-      const analyzeResponse = await fetch(`${API_BASE}/repositories/${repositoryId}/analyze`, {
-        method: 'POST',
-      })
-
-      if (!analyzeResponse.ok) {
-        const data = await analyzeResponse.json()
-        setUsernameError(data.detail)
-        return
-      }
-
-      setActiveRepositoryId(repositoryId)
-      await loadRepositories()
+      await addAndAnalyze(repo.html_url)
     } catch {
-      setUsernameError('Could not reach the backend server. Is it running?')
+      setError('Could not reach the backend server. Is it running?')
     } finally {
       setSelectingUrl(null)
     }
@@ -205,20 +182,20 @@ function App() {
       </header>
 
       <section className="card">
-        <h2>Analyze a developer's GitHub repository</h2>
-        <form className="inline-form" onSubmit={handleLoadGithubRepos}>
+        <h2>Analyze a GitHub repository</h2>
+        <form className="inline-form" onSubmit={handleSubmit}>
           <input
             type="text"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            placeholder="GitHub username"
-            disabled={isLoadingRepos}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="GitHub username or repository URL"
+            disabled={isSubmitting}
           />
-          <button type="submit" className="btn btn-primary" disabled={isLoadingRepos}>
-            {isLoadingRepos ? 'Loading...' : 'Load repositories'}
+          <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+            {isSubmitting ? 'Working...' : 'Analyze'}
           </button>
         </form>
-        {usernameError && <p className="error-text">{usernameError}</p>}
+        {error && <p className="error-text">{error}</p>}
 
         {githubRepos.length > 0 && (
           <ul className="repo-picker-list">
@@ -294,20 +271,7 @@ function App() {
       )}
 
       <section className="card">
-        <h2>Add a repository directly</h2>
-        <form className="inline-form" onSubmit={handleAdd}>
-          <input
-            type="text"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://github.com/owner/repo"
-            disabled={isAdding}
-          />
-          <button type="submit" className="btn btn-primary" disabled={isAdding}>
-            {isAdding ? 'Adding...' : 'Add repository'}
-          </button>
-        </form>
-        {error && <p className="error-text">{error}</p>}
+        <h2>Previously Analyzed Repositories</h2>
 
         <div className="table-scroll">
         <table className="repo-table">

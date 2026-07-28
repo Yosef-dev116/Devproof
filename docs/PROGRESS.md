@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Fixed a real bug: `load_dotenv()` silently failed to find `backend/.env` in uvicorn's `--reload` worker process on Windows
+- Merged the two separate entry points (username picker + direct-URL form) into a single smart input
 
 **Last Completed**
 - GitHub repository created
@@ -135,6 +135,13 @@
 - Verified: fully stopped every backend process (reloader + worker), restarted clean, and successfully ran a real `/analyze` call end-to-end against the freshly-spawned worker.
 - Separately: while debugging this, `cat -A` was accidentally run on `backend/.env`, printing partial key values into the conversation. User was advised to rotate both `OPENAI_API_KEY` and `GITHUB_TOKEN` as a precaution — **never `cat`/print `.env` file contents directly again; use `dotenv_values()` or check only key names/lengths when inspecting.**
 
+**Unified input (UX simplification):**
+- Prompted by user feedback: having two separate boxes ("Analyze a developer's GitHub repository" for a username, "Add a repository directly" for a URL) was confusing — unclear why they were separate, and the first one looked "blank" next to the second one's populated history table.
+- `App.tsx` now has a single input + one "Analyze" button. On submit, it checks the input against `GITHUB_REPO_URL_PATTERN`: if it looks like a full repo URL, it goes straight to the add+fetch+analyze pipeline (`addAndAnalyze()`, extracted as a shared helper used both here and by the repo-picker's "Select" buttons); otherwise it's treated as a username and loads that person's repo list, same as before.
+- Collapsed `username`/`url`, `usernameError`/`error`, and `isLoadingRepos`/`isAdding` into single `query`, `error`, and `isSubmitting` state variables — the separate direct-add form is gone entirely.
+- The old "Add a repository directly" section is now just "Previously Analyzed Repositories" — the history table stays (Fetch/Delete/View Report per row still work), just without its own separate input form.
+- Verified both paths through the actual UI: typing a username still loads a real repo list correctly, and pasting a direct repo URL goes straight to a full generated report, both through the same box.
+
 **Next Task**
 - Wait for approval before starting the next feature.
 - Do a manual visual check of the mobile layout (browser resize or DevTools device toolbar) — not verified live this session due to tooling limitations.
@@ -171,6 +178,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Mobile-responsive styling | Yosef | Done (visual check pending) | (none yet — committed directly to `main`) |
 | Fix: backend-unreachable error message | Yosef | Done | (none yet — committed directly to `main`) |
 | Fix: `.env` not loading in `--reload` worker process | Yosef | Done | (none yet — committed directly to `main`) |
+| Unified username/URL input (UX simplification) | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
