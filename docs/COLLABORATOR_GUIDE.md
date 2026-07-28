@@ -6,12 +6,12 @@ This file is written so you (or an AI assistant you're using, like Codex) can ge
 
 ## What DevProof is
 
-DevProof is a GitHub repository analysis tool — the goal is to give developers an evidence-based "credibility" score derived from their repositories. Right now the project is early-stage: just a backend and a database, built one small feature at a time.
+DevProof is a GitHub repository analysis tool — the goal is to give developers an evidence-based "credibility" score derived from their repositories. The backend (CRUD + real GitHub data fetching + a v1 scoring formula) is functional; the frontend is just getting started. Built one small feature at a time.
 
 ## Tech stack (fixed decisions — don't introduce alternatives)
 
 - **Backend:** Python, FastAPI
-- **Frontend:** React, TypeScript, Vite (not built yet)
+- **Frontend:** React, TypeScript, Vite (scaffolded, early stage)
 - **Database:** SQLite (file-based, no separate server)
 - **Explicitly not using:** Docker, Redis, Celery — keep the first version simple.
 
@@ -20,14 +20,16 @@ DevProof is a GitHub repository analysis tool — the goal is to give developers
 ```
 backend/
   app/
-    main.py       — FastAPI app + routes (entry point)
-    database.py   — SQLite connection + queries (no FastAPI/HTTP code here)
-    schemas.py    — Pydantic models used to validate request bodies
+    main.py           — FastAPI app + routes (entry point)
+    database.py       — SQLite connection + queries (no FastAPI/HTTP code here)
+    schemas.py        — Pydantic models used to validate request/response bodies
+    github_client.py  — calls GitHub's REST API (no FastAPI/database code here)
+    scoring.py         — pure credibility score calculation (no FastAPI/database code here)
   requirements.txt
 docs/
   PROGRESS.md            — technical changelog, decisions, task board
   COLLABORATOR_GUIDE.md   — this file
-frontend/  (empty so far)
+frontend/  — React + TypeScript + Vite app (early stage)
 ```
 
 **Architecture rule:** `database.py` only talks to SQLite. It never imports FastAPI or raises HTTP-related errors. Any translation from a database error (e.g. duplicate row) into an HTTP response (e.g. `409 Conflict`) happens in `main.py`. Keep that separation — don't collapse the layers.
@@ -42,12 +44,22 @@ pip install -r requirements.txt
 Run the server from the repo root (not from inside `backend/`), since imports use the `backend.app.` prefix:
 
 ```powershell
-uvicorn backend.app.main:app --reload --port 8001
+uvicorn backend.app.main:app --reload --port 8002
 ```
 
-Port 8001 is used instead of 8000 because 8000 may already be occupied locally (e.g. by Apache/XAMPP) on some machines — adjust if it's free on yours.
+Port 8002 is the standard local dev port for this project — 8000 may be occupied locally (e.g. by Apache/XAMPP), and 8001 ran into an unrelated stuck-socket issue during development. Use whichever free port makes sense on your machine, just update the frontend's fetch URLs (`frontend/src/`) and the backend's CORS `allow_origins` in `main.py` to match if you change it.
 
 The SQLite database file (`backend/devproof.db`) is created automatically on server startup. It's git-ignored — never commit it.
+
+## Frontend setup
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+This starts the Vite dev server at `http://localhost:5173`. The backend's CORS settings (in `main.py`) allow requests from that origin — if you run the frontend on a different port, add it to `allow_origins` too.
 
 ## Current state of the project
 

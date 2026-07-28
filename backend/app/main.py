@@ -2,6 +2,7 @@ import sqlite3
 
 import requests
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.schemas import RepositoryCreate, RepositoryOut
 from backend.app.database import (
@@ -17,6 +18,13 @@ from backend.app.scoring import calculate_credibility_score
 
 
 app = FastAPI(title="DevProof API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _attach_credibility_score(repository: dict) -> dict:
