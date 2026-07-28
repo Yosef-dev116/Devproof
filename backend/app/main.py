@@ -3,7 +3,12 @@ import sqlite3
 from fastapi import FastAPI, HTTPException
 
 from backend.app.schemas import RepositoryCreate, RepositoryOut
-from backend.app.database import initialize_database, insert_repository, get_all_repositories
+from backend.app.database import (
+    initialize_database,
+    insert_repository,
+    get_all_repositories,
+    get_repository_by_id,
+)
 
 
 app = FastAPI(title="DevProof API")
@@ -30,3 +35,11 @@ def create_repository(repository: RepositoryCreate) -> dict[str, int | str]:
 @app.get("/repositories", response_model=list[RepositoryOut])
 def list_repositories() -> list[dict]:
     return get_all_repositories()
+
+
+@app.get("/repositories/{repository_id}", response_model=RepositoryOut)
+def get_repository(repository_id: int) -> dict:
+    repository = get_repository_by_id(repository_id)
+    if repository is None:
+        raise HTTPException(status_code=404, detail="repository not found")
+    return repository

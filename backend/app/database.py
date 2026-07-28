@@ -36,3 +36,14 @@ def get_all_repositories() -> list[dict]:
         connection.row_factory = sqlite3.Row
         cursor = connection.execute("SELECT id, url, created_at FROM repositories")
         return [dict(row) for row in cursor.fetchall()]
+
+
+def get_repository_by_id(repository_id: int) -> dict | None:
+    with get_connection() as connection:
+        connection.row_factory = sqlite3.Row
+        cursor = connection.execute(
+            "SELECT id, url, created_at FROM repositories WHERE id = ?",
+            (repository_id,),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row is not None else None

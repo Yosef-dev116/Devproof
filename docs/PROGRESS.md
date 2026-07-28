@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- `GET /repositories` endpoint completed and tested
+- `GET /repositories/{id}` endpoint completed and tested
 
 **Last Completed**
 - GitHub repository created
@@ -35,6 +35,9 @@
 - `get_all_repositories()` added to `database.py`: runs a `SELECT`, uses `sqlite3.Row` + `dict(row)` to convert each row into a plain dict
 - `GET /repositories` route added to `main.py` with `response_model=list[RepositoryOut]`, returns every saved repository as a JSON array
 - Verified: returns all previously-inserted repositories with correct `id`, `url`, `created_at` fields
+- `get_repository_by_id()` added to `database.py`: `SELECT ... WHERE id = ?`, returns `None` if no row matches (via `cursor.fetchone()`)
+- `GET /repositories/{repository_id}` route added to `main.py`: path parameter typed as `int`, returns `404 Not Found` with `{"detail": "repository not found"}` if `get_repository_by_id` returns `None`
+- Verified: existing ID → `200` with repository data; missing ID → `404`
 
 **Next Task**
 - Wait for approval before starting the next feature.
@@ -57,6 +60,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 |---|---|---|---|
 | Duplicate-URL handling (`409 Conflict`) | Yosef | Done | (none yet — committed directly to `main`) |
 | `GET /repositories` (list all) | Yosef | Done | (none yet — committed directly to `main`) |
+| `GET /repositories/{id}` (single) | Yosef | Done | (none yet — committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -140,6 +144,9 @@ docs/
 - `dict(row)` converts a `sqlite3.Row` into a plain Python dict, which FastAPI/Pydantic can then work with directly.
 - `response_model=list[RepositoryOut]` on a route tells FastAPI the exact shape of what it returns — it validates and filters the output to match that schema, and documents it automatically (visible at `/docs`).
 - A schema used for what a client *sends* (`RepositoryCreate`) and one used for what the server *returns* (`RepositoryOut`) are often different — output can include server-generated fields like `id` and `created_at` that the client never provided.
+- A route path like `/repositories/{repository_id}` uses `{}` to mark a **path parameter**; FastAPI passes that piece of the URL into the matching function argument, converting it to the type hint given (`int` here).
+- `cursor.fetchone()` returns a single row (or `None` if no match), vs. `fetchall()` which returns every matching row as a list — use whichever matches how many results you expect.
+- Returning `None` from a database-access function (rather than raising an error) lets the calling route decide how to respond (here: a `404`) — the database layer just reports "found" or "not found," it doesn't decide what that means over HTTP.
 
 ## Environment / Tooling (Windows/PowerShell)
 
