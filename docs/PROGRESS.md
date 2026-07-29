@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Added "Code Quality & Type Safety (AI Slop)" analysis category, plus full repo hygiene cleanup (README/tests/CI/LICENSE)
+- Each report category now has a click-to-expand "details" explanation (3-5 grounded sentences), not just the 15-word comment
 
 **Last Completed**
 - GitHub repository created
@@ -171,10 +171,18 @@
 - New `LICENSE` (MIT).
 - **Verified the fix worked:** re-ran DevProof's self-analysis after pushing all of the above — overall score went from 25-36 up to **74/100**, with "Code Quality & Type Safety (AI Slop)" itself scoring 90/100 ("All Python functions fully type-hinted"). Remaining drag is just real repo popularity (`Collaboration: 50, "no stars or forks"`) and no Dockerfile — not fixable by more repo hygiene, and not worth chasing further right now.
 
+**Click-to-expand category details:**
+- Motivation: the 15-word category comments (e.g. "README lacks detailed usage") were too short to explain themselves — user wanted the actual reasoning and specifics visible per category, not just a one-line verdict.
+- `ai_report.py`: each category in the schema now has a `details` field (3-5 real sentences) alongside the existing `comment`, with explicit prompt guidance to (1) name exactly which evidence produced the score, (2) state what's concretely present or missing, and (3) give one specific improvement — and to never let `details` just restate `comment` in longer words.
+- `max_tokens` raised from 900 to 2200 to fit the added output. **Latency impact:** `/analyze` went from ~10-13s to ~16-17s. A real, noticeable cost, but judged worth it for the depth requested — flagged here in case it needs revisiting before the pitch.
+- Frontend: `ReportCategory` gained `details: string`. Each category row in `App.tsx` is now a clickable button (`expandedCategory` state, one expanded at a time) that toggles showing the full `details` text below it. No backend re-fetch needed — the detail text is already present in the same report payload.
+- Verified: real analysis run against `tiangolo/sqlmodel` produced genuinely specific, grounded detail text for all 9 categories (e.g. "All 62 Python functions found... have type hints", "18233 stars and 878 forks", citing the actual evidence rather than generic filler). Click/expand/collapse/switch-between-categories all confirmed working in a live browser tab.
+
 **Next Task**
 - Wait for approval before starting the next feature.
 - Do a manual visual check of the mobile layout (browser resize or DevTools device toolbar) — not verified live this session due to tooling limitations.
 - Optional, not urgent: a Dockerfile would likely push DevProof's own DevOps category score higher, if there's time before the pitch.
+- Worth a decision before the pitch: is ~16-17s per analysis acceptable, or should the `details` field be trimmed/shortened if a faster demo matters more than depth?
 
 ---
 
@@ -212,6 +220,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | "Sign in with GitHub" (OAuth) + per-user multi-tenancy | Yosef | Done | (committed directly to `main`) |
 | "Code Quality & Type Safety (AI Slop)" category | Yosef | Done | (committed directly to `main`) |
 | DevProof repo hygiene (README/tests/CI/LICENSE) | Yosef | Done | (committed directly to `main`) |
+| Click-to-expand category details | Yosef | Done | (committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 

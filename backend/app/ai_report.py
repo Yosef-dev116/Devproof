@@ -10,15 +10,15 @@ Return ONLY a JSON object with exactly this shape (no markdown, no commentary):
 {
   "overall_score": <integer 0-100>,
   "categories": [
-    {"name": "Code Organization", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
-    {"name": "Documentation", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
-    {"name": "Testing", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
-    {"name": "DevOps", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
-    {"name": "Security", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
-    {"name": "Collaboration", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
-    {"name": "Project Maturity", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
-    {"name": "Role Relevance", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
-    {"name": "Code Quality & Type Safety (AI Slop)", "score": <integer 0-100>, "comment": "<string, max 15 words>"}
+    {"name": "Code Organization", "score": <integer 0-100>, "comment": "<string, max 15 words>", "details": "<string, 3-5 sentences>"},
+    {"name": "Documentation", "score": <integer 0-100>, "comment": "<string, max 15 words>", "details": "<string, 3-5 sentences>"},
+    {"name": "Testing", "score": <integer 0-100>, "comment": "<string, max 15 words>", "details": "<string, 3-5 sentences>"},
+    {"name": "DevOps", "score": <integer 0-100>, "comment": "<string, max 15 words>", "details": "<string, 3-5 sentences>"},
+    {"name": "Security", "score": <integer 0-100>, "comment": "<string, max 15 words>", "details": "<string, 3-5 sentences>"},
+    {"name": "Collaboration", "score": <integer 0-100>, "comment": "<string, max 15 words>", "details": "<string, 3-5 sentences>"},
+    {"name": "Project Maturity", "score": <integer 0-100>, "comment": "<string, max 15 words>", "details": "<string, 3-5 sentences>"},
+    {"name": "Role Relevance", "score": <integer 0-100>, "comment": "<string, max 15 words>", "details": "<string, 3-5 sentences>"},
+    {"name": "Code Quality & Type Safety (AI Slop)", "score": <integer 0-100>, "comment": "<string, max 15 words>", "details": "<string, 3-5 sentences>"}
   ],
   "strengths": [<string, max 12 words> - exactly 3 items],
   "weaknesses": [<string, max 12 words> - exactly 3 items],
@@ -26,11 +26,18 @@ Return ONLY a JSON object with exactly this shape (no markdown, no commentary):
   "learning_roadmap": [<string, max 12 words> - exactly 3 items]
 }
 
-Be strict about the word limits and item counts above - keep every string short and to the point.
+Be strict about the word limits and item counts above - keep every "comment" and
+list item short and to the point. "details" is the one exception: write 3-5 real
+sentences there, not a restatement of "comment".
 
-Base every score and comment on the evidence provided. Reference specific evidence
-(e.g. "no tests/ directory found", "README is only 3 lines") in comments/weaknesses
-rather than making generic claims.
+Base every score, comment, and details on the evidence provided. Reference specific
+evidence (e.g. "no tests/ directory found", "README is only 3 lines") rather than
+making generic claims - "details" especially must be concrete, not generic filler.
+For each category's "details", explain (1) exactly what evidence led to this score,
+(2) what specifically is present or missing (name real things: which signal, what
+the README does/doesn't cover, what the type-safety numbers show), and (3) one
+concrete way to improve that specific category. Never write a "details" that just
+repeats "comment" in longer words with no new information.
 
 For "Code Quality & Type Safety (AI Slop)", base the score primarily on the
 `type_safety_signals` evidence: a high ratio of type-hinted Python functions,
@@ -54,7 +61,7 @@ def generate_report(evidence: dict) -> dict:
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             response_format={"type": "json_object"},
-            max_tokens=900,
+            max_tokens=2200,
             messages=[
                 {
                     "role": "system",

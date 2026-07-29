@@ -32,6 +32,7 @@ interface ReportCategory {
   name: string
   score: number
   comment: string
+  details: string
 }
 
 interface AnalysisReport {
@@ -67,6 +68,7 @@ function App() {
   const [githubRepos, setGithubRepos] = useState<GithubRepoSummary[]>([])
   const [selectingUrl, setSelectingUrl] = useState<string | null>(null)
   const [activeRepositoryId, setActiveRepositoryId] = useState<number | null>(null)
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
 
   const apiFetch = async (path: string, options?: RequestInit) => {
     const response = await fetch(`${API_BASE}${path}`, { ...options, credentials: 'include' })
@@ -156,6 +158,7 @@ function App() {
     }
 
     setActiveRepositoryId(repositoryId)
+    setExpandedCategory(null)
     await loadRepositories()
   }
 
@@ -284,16 +287,31 @@ function App() {
           </div>
 
           <h3>Categories</h3>
+          <p className="category-hint">Click a category for the full explanation.</p>
           <ul className="category-list">
-            {activeReport.categories.map((category) => (
-              <li key={category.name} className="category-item">
-                <ScoreBadge score={category.score} />
-                <div>
-                  <div className="category-name">{category.name}</div>
-                  <div className="category-comment">{category.comment}</div>
-                </div>
-              </li>
-            ))}
+            {activeReport.categories.map((category) => {
+              const isExpanded = expandedCategory === category.name
+              return (
+                <li key={category.name} className="category-item-wrapper">
+                  <button
+                    type="button"
+                    className={`category-item${isExpanded ? ' category-item-expanded' : ''}`}
+                    onClick={() => setExpandedCategory(isExpanded ? null : category.name)}
+                    aria-expanded={isExpanded}
+                  >
+                    <ScoreBadge score={category.score} />
+                    <div className="category-text">
+                      <div className="category-name">{category.name}</div>
+                      <div className="category-comment">{category.comment}</div>
+                    </div>
+                    <span className="category-chevron">{isExpanded ? '▲' : '▼'}</span>
+                  </button>
+                  {isExpanded && (
+                    <div className="category-details">{category.details}</div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
 
           <div className="report-columns">
@@ -366,7 +384,10 @@ function App() {
                   {repository.analysis_report && (
                     <button
                       className="btn btn-small btn-secondary"
-                      onClick={() => setActiveRepositoryId(repository.id)}
+                      onClick={() => {
+                        setActiveRepositoryId(repository.id)
+                        setExpandedCategory(null)
+                      }}
                     >
                       View Report
                     </button>
