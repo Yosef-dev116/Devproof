@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Each report category now has a click-to-expand "details" explanation (3-5 grounded sentences), not just the 15-word comment
+- Fixed a real bug: expanding a category showed empty text for any report analyzed before the "details" field existed; added a "Re-analyze" button so this is self-serviceable
 
 **Last Completed**
 - GitHub repository created
@@ -177,6 +177,11 @@
 - `max_tokens` raised from 900 to 2200 to fit the added output. **Latency impact:** `/analyze` went from ~10-13s to ~16-17s. A real, noticeable cost, but judged worth it for the depth requested — flagged here in case it needs revisiting before the pitch.
 - Frontend: `ReportCategory` gained `details: string`. Each category row in `App.tsx` is now a clickable button (`expandedCategory` state, one expanded at a time) that toggles showing the full `details` text below it. No backend re-fetch needed — the detail text is already present in the same report payload.
 - Verified: real analysis run against `tiangolo/sqlmodel` produced genuinely specific, grounded detail text for all 9 categories (e.g. "All 62 Python functions found... have type hints", "18233 stars and 878 forks", citing the actual evidence rather than generic filler). Click/expand/collapse/switch-between-categories all confirmed working in a live browser tab.
+
+**Bug fix — empty category details on old reports, + a "Re-analyze" button:**
+- Reported by hands-on testing: expanding a category showed nothing. Root cause: any repo analyzed *before* the `details` field was added has a stored `analysis_report` JSON blob that simply doesn't contain it — confirmed directly by inspecting `devproof.db` (2 of 3 stored reports predated the change, 1 didn't).
+- This isn't a one-off — it'll happen again any time the report schema/prompt changes and someone views an old, unrefreshed report. Fixed properly rather than just re-running the one affected repo: added a **Re-analyze** button to every row in "Previously Analyzed Repositories" (`handleReanalyze()` in `App.tsx`, calls the same `POST /repositories/{id}/analyze` used everywhere else). Label reads "Analyze" if the repo has never been analyzed, "Re-analyze" if it has.
+- Verified: re-analyzed the stale `Devproof` repo through the actual UI button, confirmed the refreshed report's categories now expand with real detail text.
 
 **Next Task**
 - Wait for approval before starting the next feature.

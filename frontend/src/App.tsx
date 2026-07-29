@@ -61,6 +61,7 @@ function App() {
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [fetchingId, setFetchingId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [analyzingId, setAnalyzingId] = useState<number | null>(null)
 
   const [query, setQuery] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -120,6 +121,23 @@ function App() {
       loadRepositories()
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const handleReanalyze = async (id: number) => {
+    setAnalyzingId(id)
+    setExpandedCategory(null)
+    try {
+      const response = await apiFetch(`/repositories/${id}/analyze`, { method: 'POST' })
+      if (!response.ok) {
+        const data = await response.json()
+        setError(data.detail)
+        return
+      }
+      setActiveRepositoryId(id)
+      await loadRepositories()
+    } finally {
+      setAnalyzingId(null)
     }
   }
 
@@ -370,14 +388,25 @@ function App() {
                   <button
                     className="btn btn-small"
                     onClick={() => handleFetch(repository.id)}
-                    disabled={fetchingId === repository.id || deletingId === repository.id}
+                    disabled={fetchingId === repository.id || deletingId === repository.id || analyzingId === repository.id}
                   >
                     {fetchingId === repository.id ? 'Fetching...' : 'Fetch'}
                   </button>
                   <button
+                    className="btn btn-small btn-secondary"
+                    onClick={() => handleReanalyze(repository.id)}
+                    disabled={fetchingId === repository.id || deletingId === repository.id || analyzingId === repository.id}
+                  >
+                    {analyzingId === repository.id
+                      ? 'Analyzing...'
+                      : repository.analysis_report
+                        ? 'Re-analyze'
+                        : 'Analyze'}
+                  </button>
+                  <button
                     className="btn btn-small btn-danger"
                     onClick={() => handleDelete(repository.id)}
-                    disabled={fetchingId === repository.id || deletingId === repository.id}
+                    disabled={fetchingId === repository.id || deletingId === repository.id || analyzingId === repository.id}
                   >
                     {deletingId === repository.id ? 'Deleting...' : 'Delete'}
                   </button>
