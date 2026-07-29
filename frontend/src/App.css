@@ -427,3 +427,111 @@ input[type='text']:disabled {
     min-width: 480px;
   }
 }
+
+/* Resume check */
+
+.resume-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resume-textarea {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 15px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.resume-textarea:focus {
+  outline: none;
+  border-color: var(--accent-border);
+}
+
+.resume-textarea:disabled {
+  opacity: 0.6;
+}
+
+.resume-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.resume-report {
+  margin-top: 20px;
+}
+
+.resume-summary {
+  font-size: 14px;
+  color: var(--text);
+  margin: 12px 0 20px;
+}
+
+.claims-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.claim-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.claim-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.claim-text {
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+.claim-evidence {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.verdict-badge {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.verdict-verified {
+  background: #30a46c;
+}
+
+.verdict-partially_verified {
+  background: #f5a623;
+}
+
+.verdict-unverifiable {
+  background: #8a8f98;
+}
+
+.verdict-contradicted {
+  background: #e5484d;
+}

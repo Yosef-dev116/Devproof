@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Fixed a real bug: expanding a category showed empty text for any report analyzed before the "details" field existed; added a "Re-analyze" button so this is self-serviceable
+- Added "Verify a Resume Against GitHub": upload/paste a resume, compare its claims against real GitHub evidence with a per-claim verdict and overall truthfulness score
 
 **Last Completed**
 - GitHub repository created
@@ -183,11 +183,24 @@
 - This isn't a one-off — it'll happen again any time the report schema/prompt changes and someone views an old, unrefreshed report. Fixed properly rather than just re-running the one affected repo: added a **Re-analyze** button to every row in "Previously Analyzed Repositories" (`handleReanalyze()` in `App.tsx`, calls the same `POST /repositories/{id}/analyze` used everywhere else). Label reads "Analyze" if the repo has never been analyzed, "Re-analyze" if it has.
 - Verified: re-analyzed the stale `Devproof` repo through the actual UI button, confirmed the refreshed report's categories now expand with real detail text.
 
+**"Verify a Resume Against GitHub" (resume-vs-GitHub truthfulness check):**
+- Previously deferred (explicitly out of scope for the original MVP, then again during the auth/AI-slop work due to time pressure) — built now since it's a strong, differentiated pitch feature: "we catch inflated resumes using real GitHub activity as ground truth," not just another resume screener.
+- Scope decision: resume input accepts **both** a pasted text (`resume_text`) and an uploaded file (`resume_file`, PDF or DOCX) — file takes priority if both are somehow provided. Comparison scope is **claims vs. evidence**: extract concrete, checkable technical/professional claims from the resume and check each individually against the person's real GitHub evidence, not a vague "word by word" diff (which isn't meaningful across two structurally different documents).
+- Kept **stateless for v1** — no new database table, no persistence. Given the time left before the pitch, this was the fastest path to a working, demo-able feature; can add a history table later if wanted.
+- New `backend/app/resume_parser.py`: `extract_resume_text()` dispatches by file extension to `pypdf` (PDF) or `python-docx` (DOCX); raises a clear `UnsupportedResumeFileType` for anything else. New deps: `pypdf`, `python-docx`, `python-multipart` (needed by FastAPI for any `Form`/`UploadFile` handling — wasn't previously installed since no endpoint used multipart forms before).
+- `github_client.py` gained `fetch_user_profile()` (`GET /users/{username}` — name, bio, public repo count, followers, account creation date) and `fetch_profile_and_repos()` (parallel fetch of profile + full repo list, same `ThreadPoolExecutor` pattern used throughout this project).
+- New `backend/app/resume_report.py`: `generate_resume_report()` — a **separate** OpenAI call/schema from the repo-analysis one in `ai_report.py` (different shape: claims extracted from free text, not fixed categories). Extracts up to 8 real claims, assigns each a verdict (`verified` / `partially_verified` / `unverifiable` / `contradicted`) with specific cited evidence, plus an overall `overall_truthfulness_score` and a short summary. Explicit prompt rule: `contradicted` only when evidence actively conflicts with a claim (e.g. claimed years of experience exceeding account age, or a claimed language that never appears in any repo) — never guess into `contradicted` from mere absence of evidence, which is `unverifiable` instead.
+- New route `POST /resume-check` (multipart form: `github_username` + either `resume_text` or `resume_file`, behind the same `Depends(get_current_user)` as everything else). GitHub evidence sent to the model: profile info, total repos, total stars, a language-frequency count across all repos, and a capped list of up to 30 repos (name/language/stars).
+- Frontend: new "Verify a Resume Against GitHub" card — username input, resume textarea (disabled once a file is chosen, to make the file-takes-priority behavior visible rather than silent), file picker (`.pdf`/`.docx`), submit button, and a report view with a truthfulness score badge, summary, and one card per claim showing a color-coded verdict badge (green/orange/gray/red for verified/partially verified/unverifiable/contradicted) plus its cited evidence.
+- Verified thoroughly: a deliberately inflated fake resume against a real, low-activity GitHub account (`octocat`) correctly scored 25/100 with specific contradicting evidence per false claim; a resume matching that same account's real activity correctly scored 90-100/100 with claims verified/partially-verified against real repo names and account-creation date; the DOCX file-upload path was tested with a real generated `.docx` and correctly extracted and processed; error handling confirmed for a nonexistent GitHub username (404), a request with neither `resume_text` nor `resume_file` (400), and an unsupported file extension (400). Full flow re-confirmed through the actual browser UI (not just curl).
+- Latency: ~5-9s per check (faster than repo analysis, since evidence-gathering here is just 2 parallel GitHub calls, not tree/README/sample-file fetches).
+
 **Next Task**
 - Wait for approval before starting the next feature.
 - Do a manual visual check of the mobile layout (browser resize or DevTools device toolbar) — not verified live this session due to tooling limitations.
 - Optional, not urgent: a Dockerfile would likely push DevProof's own DevOps category score higher, if there's time before the pitch.
-- Worth a decision before the pitch: is ~16-17s per analysis acceptable, or should the `details` field be trimmed/shortened if a faster demo matters more than depth?
+- Worth a decision before the pitch: is ~16-17s per repository analysis acceptable, or should the `details` field be trimmed/shortened if a faster demo matters more than depth?
+- Resume-check is stateless (no save/history) — worth deciding if that's fine for the pitch or if a persisted history is wanted before presenting.
 
 ---
 
@@ -226,6 +239,8 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | "Code Quality & Type Safety (AI Slop)" category | Yosef | Done | (committed directly to `main`) |
 | DevProof repo hygiene (README/tests/CI/LICENSE) | Yosef | Done | (committed directly to `main`) |
 | Click-to-expand category details | Yosef | Done | (committed directly to `main`) |
+| Fix: empty category details on old reports + Re-analyze button | Yosef | Done | (committed directly to `main`) |
+| "Verify a Resume Against GitHub" (resume truthfulness check) | Yosef | Done | (committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -370,6 +385,13 @@ docs/
 - `python-dotenv`'s default `load_dotenv()` auto-discovery depends on Python stack introspection (finding the caller's file to search upward from) — this can silently fail in process-spawning setups (like a dev server's auto-reload worker) that don't preserve a normal call stack. Passing an explicit path (built from the calling module's own `__file__`) is more robust than relying on auto-discovery whenever the process might be started in an unusual way.
 - A generic frontend error message ("could not reach the backend") can be misleading when the real cause is a backend-side 500 with a non-JSON body (the browser's `.json()` parse then throws, landing in the same catch block as a genuine network failure) — worth remembering that "network error" in the browser can also mean "the server returned something the client couldn't parse," not only "the server is down."
 - Never run `cat`/`print` on a file containing secrets to inspect its structure — use tools that show only what's needed (key names, lengths, a parser like `dotenv_values()`) so real secret values never end up in a terminal transcript or conversation log.
+
+## Cross-Referencing Free-Text Claims Against Structured Evidence
+
+- "Compare X to Y word by word" isn't a meaningful instruction when X and Y are structurally different documents (a resume vs. a GitHub profile) — the useful reframe is "extract discrete, checkable claims from X, then check each individually against Y."
+- Distinguishing "unverifiable" (no relevant evidence either way) from "contradicted" (evidence actively conflicts) matters a lot for how trustworthy the tool feels — collapsing them into one negative bucket would make it seem confidently wrong about things it actually has no information on.
+- A second, structurally different AI-report schema (claims extracted from free text, not fixed categories) is worth its own file (`resume_report.py`) rather than shoehorning into the existing category-based schema in `ai_report.py` — different shape, different prompt, different concerns.
+- Not every feature needs database persistence on day one — a stateless "compute and return" endpoint is a legitimate, much faster v1 when the alternative is designing a new table/schema under time pressure; persistence can be added later without changing the core logic.
 
 ## Environment / Tooling (Windows/PowerShell)
 

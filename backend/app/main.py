@@ -5,7 +5,7 @@ from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
+from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
@@ -41,11 +41,14 @@ from backend.app.github_client import (
     list_public_repos,
     fetch_tree_and_readme,
     fetch_sample_files,
+    fetch_profile_and_repos,
 )
 from backend.app.analysis import detect_signals
 from backend.app.code_quality import select_sample_files, detect_type_safety_signals
 from backend.app.ai_report import generate_report, AIReportError
 from backend.app.scoring import calculate_credibility_score
+from backend.app.resume_parser import extract_resume_text, UnsupportedResumeFileType
+from backend.app.resume_report import generate_resume_report, ResumeReportError
 
 
 app = FastAPI(title="DevProof API")
@@ -258,3 +261,60 @@ def remove_repository(repository_id: int, current_user: dict = Depends(get_curre
     deleted = delete_repository(repository_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="repository not found")
+
+
+@app.post("/resume-check")
+async def resume_check(
+    github_username: str = Form(...),
+    resume_text: str | None = Form(default=None),
+    resume_file: UploadFile | None = File(default=None),
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    if resume_file is not None:
+        file_bytes = await resume_file.read()
+        try:
+            text = extract_resume_text(resume_file.filename or "", file_bytes)
+        except UnsupportedResumeFileType as error:
+            raise HTTPException(status_code=400, detail=str(error))
+    elif resume_text:
+        text = resume_text
+    else:
+        raise HTTPException(status_code=400, detail="provide either resume_text or resume_file")
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="could not extract any text from the resume")
+
+    try:
+        profile, repos = fetch_profile_and_repos(github_username)
+    except requests.HTTPError as error:
+        if error.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="GitHub user not found")
+        raise HTTPException(
+            status_code=502,
+            detail=f"failed to fetch GitHub data (GitHub returned {error.response.status_code})",
+        )
+
+    language_frequency: dict[str, int] = {}
+    total_stars = 0
+    for repo in repos:
+        total_stars += repo["stargazers_count"]
+        if repo["language"]:
+            language_frequency[repo["language"]] = language_frequency.get(repo["language"], 0) + 1
+
+    github_evidence = {
+        "profile": profile,
+        "total_public_repos": len(repos),
+        "total_stars_across_repos": total_stars,
+        "language_frequency": language_frequency,
+        "repositories": [
+            {"name": r["name"], "language": r["language"], "stars": r["stargazers_count"]}
+            for r in repos[:30]
+        ],
+    }
+
+    try:
+        report = generate_resume_report(text, github_evidence)
+    except ResumeReportError as error:
+        raise HTTPException(status_code=502, detail=f"failed to generate resume report: {error}")
+
+    return report

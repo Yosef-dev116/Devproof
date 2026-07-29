@@ -44,6 +44,33 @@ interface AnalysisReport {
   learning_roadmap: string[]
 }
 
+type ResumeVerdict = 'verified' | 'partially_verified' | 'unverifiable' | 'contradicted'
+
+interface ResumeClaim {
+  claim: string
+  verdict: ResumeVerdict
+  evidence: string
+}
+
+interface ResumeReport {
+  overall_truthfulness_score: number
+  claims: ResumeClaim[]
+  summary: string
+}
+
+function verdictLabel(verdict: ResumeVerdict): string {
+  switch (verdict) {
+    case 'verified':
+      return 'Verified'
+    case 'partially_verified':
+      return 'Partially Verified'
+    case 'unverifiable':
+      return 'Unverifiable'
+    case 'contradicted':
+      return 'Contradicted'
+  }
+}
+
 function scoreTier(score: number): 'high' | 'medium' | 'low' {
   if (score >= 80) return 'high'
   if (score >= 50) return 'medium'
@@ -70,6 +97,13 @@ function App() {
   const [selectingUrl, setSelectingUrl] = useState<string | null>(null)
   const [activeRepositoryId, setActiveRepositoryId] = useState<number | null>(null)
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
+
+  const [resumeUsername, setResumeUsername] = useState('')
+  const [resumeText, setResumeText] = useState('')
+  const [resumeFile, setResumeFile] = useState<File | null>(null)
+  const [isCheckingResume, setIsCheckingResume] = useState(false)
+  const [resumeError, setResumeError] = useState<string | null>(null)
+  const [resumeReport, setResumeReport] = useState<ResumeReport | null>(null)
 
   const apiFetch = async (path: string, options?: RequestInit) => {
     const response = await fetch(`${API_BASE}${path}`, { ...options, credentials: 'include' })
@@ -217,6 +251,49 @@ function App() {
       setError('Could not reach the backend server. Is it running?')
     } finally {
       setSelectingUrl(null)
+    }
+  }
+
+  const handleResumeCheck = async (event: FormEvent) => {
+    event.preventDefault()
+    setResumeError(null)
+    setResumeReport(null)
+
+    if (!resumeUsername.trim()) {
+      setResumeError('Enter a GitHub username.')
+      return
+    }
+    if (!resumeFile && !resumeText.trim()) {
+      setResumeError('Paste resume text or upload a PDF/DOCX file.')
+      return
+    }
+
+    setIsCheckingResume(true)
+    try {
+      const formData = new FormData()
+      formData.append('github_username', resumeUsername.trim())
+      if (resumeFile) {
+        formData.append('resume_file', resumeFile)
+      } else {
+        formData.append('resume_text', resumeText.trim())
+      }
+
+      const response = await apiFetch('/resume-check', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        setResumeError(data.detail)
+        return
+      }
+
+      setResumeReport(await response.json())
+    } catch {
+      setResumeError('Could not reach the backend server. Is it running?')
+    } finally {
+      setIsCheckingResume(false)
     }
   }
 
@@ -427,6 +504,72 @@ function App() {
           </tbody>
         </table>
         </div>
+      </section>
+
+      <section className="card">
+        <h2>Verify a Resume Against GitHub</h2>
+        <form className="resume-form" onSubmit={handleResumeCheck}>
+          <input
+            type="text"
+            value={resumeUsername}
+            onChange={(event) => setResumeUsername(event.target.value)}
+            placeholder="GitHub username to check"
+            disabled={isCheckingResume}
+          />
+          <textarea
+            className="resume-textarea"
+            value={resumeText}
+            onChange={(event) => setResumeText(event.target.value)}
+            placeholder="Paste resume text here..."
+            disabled={isCheckingResume || resumeFile !== null}
+            rows={6}
+          />
+          <div className="resume-file-row">
+            <input
+              type="file"
+              accept=".pdf,.docx"
+              onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)}
+              disabled={isCheckingResume}
+            />
+            {resumeFile && (
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => setResumeFile(null)}
+                disabled={isCheckingResume}
+              >
+                Clear file
+              </button>
+            )}
+          </div>
+          <button type="submit" className="btn btn-primary" disabled={isCheckingResume}>
+            {isCheckingResume ? 'Checking...' : 'Check Resume'}
+          </button>
+        </form>
+        {resumeError && <p className="error-text">{resumeError}</p>}
+
+        {resumeReport && (
+          <div className="resume-report">
+            <div className="overall-score">
+              <ScoreBadge score={resumeReport.overall_truthfulness_score} />
+              <span className="overall-score-label">Truthfulness Score</span>
+            </div>
+            <p className="resume-summary">{resumeReport.summary}</p>
+            <ul className="claims-list">
+              {resumeReport.claims.map((claim, index) => (
+                <li key={index} className="claim-item">
+                  <div className="claim-header">
+                    <span className={`verdict-badge verdict-${claim.verdict}`}>
+                      {verdictLabel(claim.verdict)}
+                    </span>
+                    <span className="claim-text">{claim.claim}</span>
+                  </div>
+                  <div className="claim-evidence">{claim.evidence}</div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
         </>
       )}

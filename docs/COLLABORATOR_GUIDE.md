@@ -31,8 +31,11 @@ backend/
     github_client.py  — calls GitHub's REST API (repo info, commits, tree, README, user's repo list), using the shared server-wide GITHUB_TOKEN — not per-user
     auth.py            — GitHub OAuth login-URL building, code exchange, profile fetch (no FastAPI/HTTP code here, mirrors github_client.py's style)
     analysis.py        — pure signal detection from a file-path list (tests/CI/Dockerfile/etc.), no I/O
+    code_quality.py    — pure type-safety/"AI slop" heuristics from sampled source file contents, no I/O
     scoring.py         — pure credibility score calculation (stars/forks/commits formula), no I/O
-    ai_report.py        — calls OpenAI to generate the evidence-based report, no I/O besides the API call itself
+    ai_report.py        — calls OpenAI to generate the evidence-based repo report, no I/O besides the API call itself
+    resume_parser.py   — extracts text from an uploaded resume (PDF via pypdf, DOCX via python-docx)
+    resume_report.py   — calls OpenAI to compare resume claims against GitHub evidence (separate schema/prompt from ai_report.py)
   requirements.txt
   .env.example       — documents required env vars (OPENAI_API_KEY, GITHUB_TOKEN, GITHUB_OAUTH_CLIENT_ID/SECRET); copy to .env and fill in your real values
 docs/

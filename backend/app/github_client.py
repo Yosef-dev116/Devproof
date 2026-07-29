@@ -121,3 +121,24 @@ def fetch_sample_files(owner: str, repo: str, paths: list[str]) -> dict[str, str
         futures = {path: executor.submit(fetch_file_content, owner, repo, path) for path in paths}
         results = {path: future.result() for path, future in futures.items()}
     return {path: content for path, content in results.items() if content is not None}
+
+
+def fetch_user_profile(username: str) -> dict:
+    response = _session.get(f"{GITHUB_API_BASE}/users/{username}")
+    response.raise_for_status()
+    data = response.json()
+    return {
+        "login": data["login"],
+        "name": data.get("name"),
+        "bio": data.get("bio"),
+        "public_repos": data.get("public_repos"),
+        "followers": data.get("followers"),
+        "account_created_at": data.get("created_at"),
+    }
+
+
+def fetch_profile_and_repos(username: str) -> tuple[dict, list[dict]]:
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        profile_future = executor.submit(fetch_user_profile, username)
+        repos_future = executor.submit(list_public_repos, username)
+        return profile_future.result(), repos_future.result()
