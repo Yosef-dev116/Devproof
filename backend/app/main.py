@@ -40,8 +40,10 @@ from backend.app.github_client import (
     fetch_repo_data,
     list_public_repos,
     fetch_tree_and_readme,
+    fetch_sample_files,
 )
 from backend.app.analysis import detect_signals
+from backend.app.code_quality import select_sample_files, detect_type_safety_signals
 from backend.app.ai_report import generate_report, AIReportError
 from backend.app.scoring import calculate_credibility_score
 
@@ -216,14 +218,19 @@ def analyze_repository(repository_id: int, current_user: dict = Depends(get_curr
     repository = get_repository_by_id(repository_id, current_user["id"])
 
     try:
-        file_paths, readme_text = fetch_tree_and_readme(owner, repo, github_data["default_branch"])
+        file_entries, readme_text = fetch_tree_and_readme(owner, repo, github_data["default_branch"])
     except requests.HTTPError as error:
         raise HTTPException(
             status_code=502,
             detail=f"failed to fetch repository contents from GitHub (GitHub returned {error.response.status_code})",
         )
 
+    file_paths = [entry["path"] for entry in file_entries]
     signals = detect_signals(file_paths)
+
+    sample_paths = select_sample_files(file_entries)
+    sample_contents = fetch_sample_files(owner, repo, sample_paths)
+    type_safety_signals = detect_type_safety_signals(sample_contents)
 
     evidence = {
         "stars": repository["stars"],
@@ -233,6 +240,7 @@ def analyze_repository(repository_id: int, current_user: dict = Depends(get_curr
         "recent_commit_count": repository["recent_commit_count"],
         **signals,
         "readme_excerpt": (readme_text or "")[:1500],
+        "type_safety_signals": type_safety_signals,
     }
 
     try:

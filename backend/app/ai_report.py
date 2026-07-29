@@ -17,7 +17,8 @@ Return ONLY a JSON object with exactly this shape (no markdown, no commentary):
     {"name": "Security", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
     {"name": "Collaboration", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
     {"name": "Project Maturity", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
-    {"name": "Role Relevance", "score": <integer 0-100>, "comment": "<string, max 15 words>"}
+    {"name": "Role Relevance", "score": <integer 0-100>, "comment": "<string, max 15 words>"},
+    {"name": "Code Quality & Type Safety (AI Slop)", "score": <integer 0-100>, "comment": "<string, max 15 words>"}
   ],
   "strengths": [<string, max 12 words> - exactly 3 items],
   "weaknesses": [<string, max 12 words> - exactly 3 items],
@@ -30,6 +31,13 @@ Be strict about the word limits and item counts above - keep every string short 
 Base every score and comment on the evidence provided. Reference specific evidence
 (e.g. "no tests/ directory found", "README is only 3 lines") in comments/weaknesses
 rather than making generic claims.
+
+For "Code Quality & Type Safety (AI Slop)", base the score primarily on the
+`type_safety_signals` evidence: a high ratio of type-hinted Python functions,
+a high ratio of `.ts`/`.tsx` files over untyped `.js`/`.jsx`, real interface/type
+declarations, and low `any` usage all score well. Untyped, `any`-heavy, or
+inconsistent code is a sign of careless, low-effort ("AI slop") code generation
+and should score poorly, even if the code otherwise runs.
 """
 
 

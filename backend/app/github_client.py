@@ -69,7 +69,7 @@ def list_public_repos(username: str) -> list[dict]:
     ]
 
 
-def fetch_repo_tree(owner: str, repo: str, default_branch: str) -> list[str]:
+def fetch_repo_tree(owner: str, repo: str, default_branch: str) -> list[dict]:
     response = _session.get(
         f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{default_branch}",
         params={"recursive": "1"},
@@ -78,7 +78,11 @@ def fetch_repo_tree(owner: str, repo: str, default_branch: str) -> list[str]:
         # Empty repository (no commits yet) has no tree to fetch.
         return []
     response.raise_for_status()
-    return [entry["path"] for entry in response.json()["tree"]]
+    return [
+        {"path": entry["path"], "size": entry.get("size", 0)}
+        for entry in response.json()["tree"]
+        if entry["type"] == "blob"
+    ]
 
 
 def fetch_readme_text(owner: str, repo: str) -> str | None:
@@ -92,8 +96,28 @@ def fetch_readme_text(owner: str, repo: str) -> str | None:
     return response.text
 
 
-def fetch_tree_and_readme(owner: str, repo: str, default_branch: str) -> tuple[list[str], str | None]:
+def fetch_tree_and_readme(owner: str, repo: str, default_branch: str) -> tuple[list[dict], str | None]:
     with ThreadPoolExecutor(max_workers=2) as executor:
         tree_future = executor.submit(fetch_repo_tree, owner, repo, default_branch)
         readme_future = executor.submit(fetch_readme_text, owner, repo)
         return tree_future.result(), readme_future.result()
+
+
+def fetch_file_content(owner: str, repo: str, path: str) -> str | None:
+    response = _session.get(
+        f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}",
+        headers={"Accept": "application/vnd.github.raw+json"},
+    )
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    return response.text
+
+
+def fetch_sample_files(owner: str, repo: str, paths: list[str]) -> dict[str, str]:
+    if not paths:
+        return {}
+    with ThreadPoolExecutor(max_workers=len(paths)) as executor:
+        futures = {path: executor.submit(fetch_file_content, owner, repo, path) for path in paths}
+        results = {path: future.result() for path, future in futures.items()}
+    return {path: content for path, content in results.items() if content is not None}
