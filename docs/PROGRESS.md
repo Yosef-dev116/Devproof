@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Added "Sign in with GitHub" (OAuth) + per-user multi-tenancy: each user now only sees their own analyzed repos.
+- Added "Code Quality & Type Safety (AI Slop)" analysis category, plus full repo hygiene cleanup (README/tests/CI/LICENSE)
 
 **Last Completed**
 - GitHub repository created
@@ -156,9 +156,25 @@
 - **Update:** this session's Ultraplan-generated patch (`0001addgithuboauthmultitenancy.patch`) was reviewed in full, applied via `git apply`, and independently re-verified: local DB regenerated, backend starts cleanly on the new schema, unauthenticated `/auth/me` and `/repositories` both correctly return `401`, CORS preflight shows `access-control-allow-credentials: true`, and `GET /auth/github/login` correctly builds the GitHub authorize URL with a real `client_id` and sets the `oauth_state` cookie.
 - Real GitHub OAuth App created (`github.com/settings/developers`, callback `http://localhost:8002/auth/github/callback`), `GITHUB_OAUTH_CLIENT_ID`/`GITHUB_OAUTH_CLIENT_SECRET` added to `backend/.env`. **Real end-to-end OAuth click-through confirmed working** by the user directly in their own browser: signed in with GitHub, landed back on DevProof authenticated, `users` table shows the real GitHub account, `sessions` table shows an active session.
 
+**"Code Quality & Type Safety (AI Slop)" analysis category:**
+- Motivation: catch the specific signature of careless/low-effort AI-generated code — no type hints, no interfaces, `any` everywhere — as its own visible signal, both as a real product feature and (bluntly) so DevProof itself doesn't embarrass anyone if it's run on itself live at the pitch.
+- `github_client.py`: `fetch_repo_tree()` now returns `{"path", "size"}` per blob (not just paths) — needed to prioritize substantial files over trivial ones. New `fetch_file_content()`/`fetch_sample_files()` (parallel, same `ThreadPoolExecutor` pattern as the tree/README fetch) pull actual source file contents.
+- New `backend/app/code_quality.py` (pure functions, no I/O, same style as `analysis.py`/`scoring.py`): `select_sample_files()` picks up to 6 real source files, biggest-first, capped at 3 per top-level directory, excluding `node_modules/`/`dist/`/`__pycache__/` and trivial filenames (`__init__.py`, `__main__.py`, `setup.py`). `detect_type_safety_signals()` counts Python functions with/without type hints (regex on `def ... ->`/param `:` annotations) and TypeScript/JavaScript interface/type declarations vs. `any` usage.
+- **Real bug found and fixed during testing:** the first version of `select_sample_files()` round-robinned by directory without any size awareness, so it picked mostly near-empty `__init__.py` files and docs-site theme JS — causing `tiangolo/sqlmodel` (a library renowned for heavy type annotation) to incorrectly score 40/100 ("limited type hints"). Switched to size-based prioritization; re-verified sqlmodel now correctly scores 90/100 ("Completely type-hinted Python functions, no untyped code"), with the actual sampled file (`sqlmodel/main.py`) showing 62/62 typed functions.
+- `ai_report.py`: added as a 9th category in the schema, with explicit prompt guidance to score it from `type_safety_signals` and treat untyped/`any`-heavy/inconsistent code as a low-effort "AI slop" signal even if it otherwise runs.
+- No frontend changes needed — the report UI already renders `categories` generically, so the new category just appears.
+
+**DevProof's own repo hygiene (prompted by the AI Slop feature above):** DevProof scored itself 25-36/100 earlier today — almost entirely from missing repo hygiene (no tests, no CI, no LICENSE, a 2-line README), not actual code quality issues.
+- Rewrote root `README.md`: real description, features, tech stack, setup instructions, test-running instructions.
+- New `backend/tests/`: 15 unit tests across `test_scoring.py`, `test_analysis.py`, `test_code_quality.py`, `test_github_client.py` — all pure-function tests, zero network calls, so they run in CI without needing any API keys. `pytest` added to `requirements.txt`.
+- New `.github/workflows/ci.yml`: runs the backend test suite + a frontend production build on every push/PR — DevProof's own analyze pipeline can now genuinely detect `has_ci: true`.
+- New `LICENSE` (MIT).
+- **Verified the fix worked:** re-ran DevProof's self-analysis after pushing all of the above — overall score went from 25-36 up to **74/100**, with "Code Quality & Type Safety (AI Slop)" itself scoring 90/100 ("All Python functions fully type-hinted"). Remaining drag is just real repo popularity (`Collaboration: 50, "no stars or forks"`) and no Dockerfile — not fixable by more repo hygiene, and not worth chasing further right now.
+
 **Next Task**
 - Wait for approval before starting the next feature.
 - Do a manual visual check of the mobile layout (browser resize or DevTools device toolbar) — not verified live this session due to tooling limitations.
+- Optional, not urgent: a Dockerfile would likely push DevProof's own DevOps category score higher, if there's time before the pitch.
 
 ---
 
@@ -194,6 +210,8 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Fix: `.env` not loading in `--reload` worker process | Yosef | Done | (none yet — committed directly to `main`) |
 | Unified username/URL input (UX simplification) | Yosef | Done | (none yet — committed directly to `main`) |
 | "Sign in with GitHub" (OAuth) + per-user multi-tenancy | Yosef | Done | (committed directly to `main`) |
+| "Code Quality & Type Safety (AI Slop)" category | Yosef | Done | (committed directly to `main`) |
+| DevProof repo hygiene (README/tests/CI/LICENSE) | Yosef | Done | (committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -328,6 +346,13 @@ docs/
 - With an AI API call in the pipeline, the model's *output length* is often the biggest lever on latency — asking for shorter, capped-length responses (word limits, fixed list sizes) can meaningfully speed up generation, separate from which model is used.
 - Most public APIs (GitHub included) rate-limit unauthenticated requests far more aggressively than authenticated ones — attaching a personal access token via an `Authorization` header is often a five-minute fix for what would otherwise become a real production/demo blocker.
 - Verifying "is my token actually being used and accepted" is worth doing explicitly (checking the header is set, then calling the API's own rate-limit/whoami endpoint) rather than assuming it works just because no error was thrown.
+
+## Sampling Real Code for Analysis
+
+- A file's byte size is a much better proxy for "this probably contains substantial real logic" than alphabetical order or directory position — `__init__.py`/stub files are consistently tiny, real implementation files are consistently bigger.
+- Capping how many sample files come from any single top-level directory keeps a sample representative of a full-stack repo (both backend and frontend) even when one side happens to have larger files overall.
+- A heuristic that "worked" on the first repo tested isn't verified — it needs to be checked against a repo where the *expected* answer is well known (a library famous for heavy typing) so a wrong result is obviously wrong, not just plausible-looking.
+- Regex-based code metrics (counting `def ... ->`, `: any`, `interface `) are crude compared to a real parser/AST, but are fast, dependency-free, and good enough for a directional signal fed to an LLM alongside other evidence — not something to over-invest in for a v1.
 - `python-dotenv`'s default `load_dotenv()` auto-discovery depends on Python stack introspection (finding the caller's file to search upward from) — this can silently fail in process-spawning setups (like a dev server's auto-reload worker) that don't preserve a normal call stack. Passing an explicit path (built from the calling module's own `__file__`) is more robust than relying on auto-discovery whenever the process might be started in an unusual way.
 - A generic frontend error message ("could not reach the backend") can be misleading when the real cause is a backend-side 500 with a non-JSON body (the browser's `.json()` parse then throws, landing in the same catch block as a genuine network failure) — worth remembering that "network error" in the browser can also mean "the server returned something the client couldn't parse," not only "the server is down."
 - Never run `cat`/`print` on a file containing secrets to inspect its structure — use tools that show only what's needed (key names, lengths, a parser like `dotenv_values()`) so real secret values never end up in a terminal transcript or conversation log.
