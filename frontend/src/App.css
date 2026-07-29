@@ -20,6 +20,20 @@
   font-size: 15px;
 }
 
+.auth-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.auth-bar .avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+
 .card {
   background: var(--code-bg);
   border: 1px solid var(--border);

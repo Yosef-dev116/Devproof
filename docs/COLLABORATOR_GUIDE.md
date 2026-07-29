@@ -17,7 +17,8 @@ The core flow is built and working end-to-end (backend + frontend), verified aga
 - **Database:** SQLite (file-based, no separate server)
 - **AI:** OpenAI API (`gpt-4o-mini` by default — see `backend/app/ai_report.py`)
 - **External API:** GitHub REST API
-- **Explicitly not using:** Docker, Redis, Celery, auth, payments, multi-user features — keep it to the MVP scope.
+- **Auth:** "Sign in with GitHub" (OAuth), cookie-based sessions stored in SQLite. Each user only sees their own analyzed repos.
+- **Explicitly not using:** Docker, Redis, Celery, payments — keep it to the MVP scope.
 
 ## Project structure
 
@@ -27,12 +28,13 @@ backend/
     main.py           — FastAPI app + routes (entry point)
     database.py       — SQLite connection + queries (no FastAPI/HTTP code here)
     schemas.py        — Pydantic models used to validate request/response bodies
-    github_client.py  — calls GitHub's REST API (repo info, commits, tree, README, user's repo list)
+    github_client.py  — calls GitHub's REST API (repo info, commits, tree, README, user's repo list), using the shared server-wide GITHUB_TOKEN — not per-user
+    auth.py            — GitHub OAuth login-URL building, code exchange, profile fetch (no FastAPI/HTTP code here, mirrors github_client.py's style)
     analysis.py        — pure signal detection from a file-path list (tests/CI/Dockerfile/etc.), no I/O
     scoring.py         — pure credibility score calculation (stars/forks/commits formula), no I/O
     ai_report.py        — calls OpenAI to generate the evidence-based report, no I/O besides the API call itself
   requirements.txt
-  .env.example       — documents required env vars (OPENAI_API_KEY); copy to .env and fill in your real key
+  .env.example       — documents required env vars (OPENAI_API_KEY, GITHUB_TOKEN, GITHUB_OAUTH_CLIENT_ID/SECRET); copy to .env and fill in your real values
 docs/
   PROGRESS.md            — technical changelog, decisions, task board
   COLLABORATOR_GUIDE.md   — this file
@@ -53,9 +55,13 @@ Create `backend/.env` (git-ignored, never commit it):
 ```
 OPENAI_API_KEY=your-real-key-here
 GITHUB_TOKEN=your-github-personal-access-token-here
+GITHUB_OAUTH_CLIENT_ID=your-github-oauth-client-id-here
+GITHUB_OAUTH_CLIENT_SECRET=your-github-oauth-client-secret-here
 ```
 
 `main.py` loads this automatically on startup via `python-dotenv`. `OPENAI_API_KEY` is required for `/repositories/{id}/analyze` (the `/fetch` and list/CRUD endpoints don't need it). `GITHUB_TOKEN` is optional but strongly recommended — without it, GitHub API calls are capped at 60/hour total; with a token (no special scopes needed for public repo reads), that jumps to 5000/hour. Generate one at `github.com/settings/tokens`.
+
+`GITHUB_OAUTH_CLIENT_ID`/`GITHUB_OAUTH_CLIENT_SECRET` are required for "Sign in with GitHub" — every route except `/health` and `/auth/*` requires a logged-in session. Create an OAuth App at `github.com/settings/developers` → OAuth Apps → New OAuth App, with Homepage URL `http://localhost:5180` and Authorization callback URL `http://localhost:8002/auth/github/callback`. Use `localhost` (not `127.0.0.1`) consistently — the session cookie is host-scoped, so mixing the two breaks login silently.
 
 Run the server from the repo root (not from inside `backend/`), since imports use the `backend.app.` prefix:
 
@@ -95,7 +101,7 @@ Full technical history and decisions are tracked in `docs/PROGRESS.md` — read 
   - `docs/PROGRESS.md` (technical: what changed, new concepts, decisions)
   - the plain-English "What we did so far" file (kept outside the repo, in a shared folder — ask Yosef for it if you need to update it)
 - **Parameterized SQL only.** Never build SQL queries with f-strings/string formatting — always use `?` placeholders with a separate values tuple. This is a fixed project rule, not a suggestion (prevents SQL injection).
-- **One feature at a time, don't scope-creep.** Don't add authentication, extra endpoints, or "nice to have" extras beyond the specific task you claimed.
+- **One feature at a time, don't scope-creep.** Don't add extra endpoints or "nice to have" extras beyond the specific task you claimed.
 
 ## Note on `DEV_GUIDE.md`
 

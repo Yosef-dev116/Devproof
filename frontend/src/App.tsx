@@ -2,8 +2,13 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
-const API_BASE = 'http://127.0.0.1:8002'
+const API_BASE = 'http://localhost:8002'
 const GITHUB_REPO_URL_PATTERN = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/?$/
+
+interface CurrentUser {
+  github_username: string
+  avatar_url: string | null
+}
 
 interface Repository {
   id: number
@@ -49,6 +54,9 @@ function ScoreBadge({ score }: { score: number }) {
 }
 
 function App() {
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+
   const [repositories, setRepositories] = useState<Repository[]>([])
   const [fetchingId, setFetchingId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
@@ -60,8 +68,16 @@ function App() {
   const [selectingUrl, setSelectingUrl] = useState<string | null>(null)
   const [activeRepositoryId, setActiveRepositoryId] = useState<number | null>(null)
 
+  const apiFetch = async (path: string, options?: RequestInit) => {
+    const response = await fetch(`${API_BASE}${path}`, { ...options, credentials: 'include' })
+    if (response.status === 401) {
+      setCurrentUser(null)
+    }
+    return response
+  }
+
   const loadRepositories = () => {
-    return fetch(`${API_BASE}/repositories`)
+    return apiFetch('/repositories')
       .then((response) => response.json())
       .then((data: Repository[]) => {
         setRepositories(data)
@@ -70,13 +86,25 @@ function App() {
   }
 
   useEffect(() => {
-    loadRepositories()
+    apiFetch('/auth/me')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((user: CurrentUser | null) => {
+        setCurrentUser(user)
+        setCheckingAuth(false)
+        if (user) loadRepositories()
+      })
   }, [])
+
+  const handleLogout = async () => {
+    await apiFetch('/auth/logout', { method: 'POST' })
+    setCurrentUser(null)
+    setRepositories([])
+  }
 
   const handleFetch = async (id: number) => {
     setFetchingId(id)
     try {
-      await fetch(`${API_BASE}/repositories/${id}/fetch`, { method: 'POST' })
+      await apiFetch(`/repositories/${id}/fetch`, { method: 'POST' })
       loadRepositories()
     } finally {
       setFetchingId(null)
@@ -86,7 +114,7 @@ function App() {
   const handleDelete = async (id: number) => {
     setDeletingId(id)
     try {
-      await fetch(`${API_BASE}/repositories/${id}`, { method: 'DELETE' })
+      await apiFetch(`/repositories/${id}`, { method: 'DELETE' })
       loadRepositories()
     } finally {
       setDeletingId(null)
@@ -94,7 +122,7 @@ function App() {
   }
 
   const addAndAnalyze = async (targetUrl: string) => {
-    const createResponse = await fetch(`${API_BASE}/repositories`, {
+    const createResponse = await apiFetch('/repositories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: targetUrl }),
@@ -117,7 +145,7 @@ function App() {
       repositoryId = (await createResponse.json()).id
     }
 
-    const analyzeResponse = await fetch(`${API_BASE}/repositories/${repositoryId}/analyze`, {
+    const analyzeResponse = await apiFetch(`/repositories/${repositoryId}/analyze`, {
       method: 'POST',
     })
 
@@ -144,7 +172,7 @@ function App() {
       if (GITHUB_REPO_URL_PATTERN.test(trimmed)) {
         await addAndAnalyze(trimmed)
       } else {
-        const response = await fetch(`${API_BASE}/github/${trimmed}/repos`)
+        const response = await apiFetch(`/github/${trimmed}/repos`)
         if (!response.ok) {
           const data = await response.json()
           setError(data.detail)
@@ -179,8 +207,33 @@ function App() {
       <header className="app-header">
         <h1>DevProof</h1>
         <p className="tagline">Evidence-based GitHub repository analysis</p>
+        {currentUser && (
+          <div className="auth-bar">
+            {currentUser.avatar_url && (
+              <img className="avatar" src={currentUser.avatar_url} alt={currentUser.github_username} />
+            )}
+            <span>{currentUser.github_username}</span>
+            <button className="btn btn-small" onClick={handleLogout}>
+              Log out
+            </button>
+          </div>
+        )}
       </header>
 
+      {checkingAuth ? null : !currentUser ? (
+        <section className="card">
+          <h2>Sign in to get started</h2>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              window.location.href = `${API_BASE}/auth/github/login`
+            }}
+          >
+            Sign in with GitHub
+          </button>
+        </section>
+      ) : (
+        <>
       <section className="card">
         <h2>Analyze a GitHub repository</h2>
         <form className="inline-form" onSubmit={handleSubmit}>
@@ -325,6 +378,8 @@ function App() {
         </table>
         </div>
       </section>
+        </>
+      )}
     </div>
   )
 }

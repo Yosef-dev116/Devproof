@@ -1,11 +1,13 @@
 import json
+import secrets
 import sqlite3
 from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 # Point load_dotenv() at the exact file rather than relying on its default
 # auto-discovery (stack-based, walking up from the caller's file). That
@@ -23,6 +25,15 @@ from backend.app.database import (
     update_repository_github_data,
     update_repository_analysis,
     delete_repository,
+    get_or_create_user,
+    create_session,
+    get_user_by_session,
+    delete_session,
+)
+from backend.app.auth import (
+    get_github_login_url,
+    exchange_code_for_token,
+    fetch_github_profile,
 )
 from backend.app.github_client import (
     parse_github_url,
@@ -40,9 +51,17 @@ app = FastAPI(title="DevProof API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5180", "http://127.0.0.1:5180"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def get_current_user(session_id: str | None = Cookie(default=None)) -> dict:
+    user = get_user_by_session(session_id) if session_id else None
+    if user is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    return user
 
 
 def _attach_credibility_score(repository: dict) -> dict:
@@ -76,8 +95,47 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/auth/github/login")
+def github_login() -> RedirectResponse:
+    state = secrets.token_urlsafe(16)
+    redirect = RedirectResponse(get_github_login_url(state))
+    redirect.set_cookie("oauth_state", state, httponly=True, samesite="lax", max_age=600)
+    return redirect
+
+
+@app.get("/auth/github/callback")
+def github_callback(code: str, state: str, oauth_state: str | None = Cookie(default=None)) -> RedirectResponse:
+    if not oauth_state or state != oauth_state:
+        raise HTTPException(status_code=400, detail="invalid oauth state")
+
+    access_token = exchange_code_for_token(code)
+    profile = fetch_github_profile(access_token)
+    user = get_or_create_user(profile["id"], profile["login"], profile["avatar_url"], access_token)
+    session_id = create_session(user["id"])
+
+    redirect = RedirectResponse("http://localhost:5180/")
+    redirect.delete_cookie("oauth_state")
+    redirect.set_cookie("session_id", session_id, httponly=True, samesite="lax")
+    return redirect
+
+
+@app.get("/auth/me")
+def get_me(current_user: dict = Depends(get_current_user)) -> dict:
+    return {
+        "github_username": current_user["github_username"],
+        "avatar_url": current_user["avatar_url"],
+    }
+
+
+@app.post("/auth/logout", status_code=204)
+def logout(response: Response, session_id: str | None = Cookie(default=None)) -> None:
+    if session_id:
+        delete_session(session_id)
+    response.delete_cookie("session_id")
+
+
 @app.get("/github/{username}/repos")
-def list_github_repos(username: str) -> list[dict]:
+def list_github_repos(username: str, current_user: dict = Depends(get_current_user)) -> list[dict]:
     try:
         return list_public_repos(username)
     except requests.HTTPError as error:
@@ -90,28 +148,28 @@ def list_github_repos(username: str) -> list[dict]:
 
 
 @app.post("/repositories", status_code=201)
-def create_repository(repository: RepositoryCreate) -> dict[str, int | str]:
+def create_repository(repository: RepositoryCreate, current_user: dict = Depends(get_current_user)) -> dict[str, int | str]:
     try:
-        new_id = insert_repository(repository.url)
+        new_id = insert_repository(repository.url, current_user["id"])
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=409, detail="repository already exists")
     return {"id": new_id, "url": repository.url}
 
 
 @app.get("/repositories", response_model=list[RepositoryOut])
-def list_repositories() -> list[dict]:
-    return [_decorate(repository) for repository in get_all_repositories()]
+def list_repositories(current_user: dict = Depends(get_current_user)) -> list[dict]:
+    return [_decorate(repository) for repository in get_all_repositories(current_user["id"])]
 
 
 @app.get("/repositories/{repository_id}", response_model=RepositoryOut)
-def get_repository(repository_id: int) -> dict:
-    repository = get_repository_by_id(repository_id)
+def get_repository(repository_id: int, current_user: dict = Depends(get_current_user)) -> dict:
+    repository = get_repository_by_id(repository_id, current_user["id"])
     if repository is None:
         raise HTTPException(status_code=404, detail="repository not found")
     return _decorate(repository)
 
 
-def _fetch_and_store_github_data(repository_id: int, url: str) -> dict:
+def _fetch_and_store_github_data(repository_id: int, user_id: int, url: str) -> dict:
     owner, repo = parse_github_url(url)
     try:
         github_data = fetch_repo_data(owner, repo)
@@ -125,6 +183,7 @@ def _fetch_and_store_github_data(repository_id: int, url: str) -> dict:
 
     update_repository_github_data(
         repository_id,
+        user_id,
         stars=github_data["stars"],
         forks=github_data["forks"],
         language=github_data["language"],
@@ -136,25 +195,25 @@ def _fetch_and_store_github_data(repository_id: int, url: str) -> dict:
 
 
 @app.post("/repositories/{repository_id}/fetch", response_model=RepositoryOut)
-def fetch_repository_data(repository_id: int) -> dict:
-    repository = get_repository_by_id(repository_id)
+def fetch_repository_data(repository_id: int, current_user: dict = Depends(get_current_user)) -> dict:
+    repository = get_repository_by_id(repository_id, current_user["id"])
     if repository is None:
         raise HTTPException(status_code=404, detail="repository not found")
 
-    _fetch_and_store_github_data(repository_id, repository["url"])
+    _fetch_and_store_github_data(repository_id, current_user["id"], repository["url"])
 
-    return _decorate(get_repository_by_id(repository_id))
+    return _decorate(get_repository_by_id(repository_id, current_user["id"]))
 
 
 @app.post("/repositories/{repository_id}/analyze", response_model=RepositoryOut)
-def analyze_repository(repository_id: int) -> dict:
-    repository = get_repository_by_id(repository_id)
+def analyze_repository(repository_id: int, current_user: dict = Depends(get_current_user)) -> dict:
+    repository = get_repository_by_id(repository_id, current_user["id"])
     if repository is None:
         raise HTTPException(status_code=404, detail="repository not found")
 
     owner, repo = parse_github_url(repository["url"])
-    github_data = _fetch_and_store_github_data(repository_id, repository["url"])
-    repository = get_repository_by_id(repository_id)
+    github_data = _fetch_and_store_github_data(repository_id, current_user["id"], repository["url"])
+    repository = get_repository_by_id(repository_id, current_user["id"])
 
     try:
         file_paths, readme_text = fetch_tree_and_readme(owner, repo, github_data["default_branch"])
@@ -181,13 +240,13 @@ def analyze_repository(repository_id: int) -> dict:
     except AIReportError as error:
         raise HTTPException(status_code=502, detail=f"failed to generate AI report: {error}")
 
-    update_repository_analysis(repository_id, report)
+    update_repository_analysis(repository_id, current_user["id"], report)
 
-    return _decorate(get_repository_by_id(repository_id))
+    return _decorate(get_repository_by_id(repository_id, current_user["id"]))
 
 
 @app.delete("/repositories/{repository_id}", status_code=204)
-def remove_repository(repository_id: int) -> None:
-    deleted = delete_repository(repository_id)
+def remove_repository(repository_id: int, current_user: dict = Depends(get_current_user)) -> None:
+    deleted = delete_repository(repository_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="repository not found")

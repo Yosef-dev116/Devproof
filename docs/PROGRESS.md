@@ -3,7 +3,7 @@
 ## Current Status
 
 **Current Feature**
-- Merged the two separate entry points (username picker + direct-URL form) into a single smart input
+- Added "Sign in with GitHub" (OAuth) + per-user multi-tenancy: each user now only sees their own analyzed repos.
 
 **Last Completed**
 - GitHub repository created
@@ -142,6 +142,20 @@
 - The old "Add a repository directly" section is now just "Previously Analyzed Repositories" — the history table stays (Fetch/Delete/View Report per row still work), just without its own separate input form.
 - Verified both paths through the actual UI: typing a username still loads a real repo list correctly, and pasting a direct repo URL goes straight to a full generated report, both through the same box.
 
+**"Sign in with GitHub" + per-user multi-tenancy:**
+- Previously the MVP spec explicitly excluded auth/multi-user (see "Important Decisions Made"). With the pitch deadline close, added it: GitHub OAuth rather than email/password — no password management, fits the product's identity naturally, and doubles as a demo moment.
+- New `users`/`sessions` tables in `database.py`; `repositories` gained a `user_id` column and its `url` uniqueness became per-user (`UNIQUE(url, user_id)` instead of a bare `UNIQUE` on `url`) so two different users can add the same repo without colliding. All existing repository functions (`insert_repository`, `get_all_repositories`, `get_repository_by_id`, `update_repository_github_data`, `update_repository_analysis`, `delete_repository`) now take a `user_id` and filter by it.
+- New `backend/app/auth.py` (OAuth login-URL building, code exchange, profile fetch) mirrors `github_client.py`'s style: plain functions, `requests`, no FastAPI imports.
+- New routes in `main.py`: `GET /auth/github/login`, `GET /auth/github/callback`, `GET /auth/me`, `POST /auth/logout`. Every existing `/repositories*` route and `GET /github/{username}/repos` now requires a logged-in session via a `Depends(get_current_user)` dependency, backed by a cookie-based session stored in SQLite (not an in-memory dict) so logins survive the backend restarts that happen constantly during dev.
+- Basic CSRF protection on the OAuth flow: a random `state` value is set in a short-lived cookie by `/auth/github/login` and verified against the callback's `state` query param.
+- CORS: added `allow_credentials=True` (required for the session cookie to actually be sent on cross-origin requests from the Vite dev server; the existing `allow_origins` whitelist was already compatible since it isn't `["*"]`).
+- Frontend `API_BASE` changed from `http://127.0.0.1:8002` to `http://localhost:8002` — required, not cosmetic. The OAuth callback URL is `http://localhost:8002/...`, so the session cookie is host-scoped to `localhost`; a cookie scoped to `localhost` is never sent on requests to `127.0.0.1`, even on the same machine/port. Missing this would make login look like it worked (the redirect succeeds) while every subsequent API call silently looked logged-out.
+- All `fetch()` calls in `App.tsx` now go through a shared `apiFetch()` helper that adds `credentials: 'include'` and resets `currentUser` to `null` on any `401` response, instead of duplicating that logic across all 6 call sites (two of which had no `catch` block at all to piggyback on).
+- Deliberately deferred: GitHub *data-fetching* calls (repo info, commits, tree, README, username's repo list) still use the existing shared, process-wide `GITHUB_TOKEN` in `github_client.py` (a single module-level `requests.Session()` with its `Authorization` header set once at import time). Switching those to per-user GitHub OAuth tokens is a real refactor of that module and is out of scope for this feature — OAuth here is only used to identify/scope users, not to make GitHub API calls on their behalf.
+- Verified: full DB-layer test (upsert on repeat login, session create/lookup/delete, cross-user repo isolation on list/get/delete, composite unique constraint allowing two users to add the same URL) run directly against `database.py`; full HTTP-layer test against a live `uvicorn` instance (unauthenticated 401s, login redirect + `state` cookie, authenticated `/auth/me` + `/repositories` create/list via cookie, CORS preflight showing `access-control-allow-credentials: true`, logout clearing the session); frontend `tsc -b && vite build` clean; browser screenshots (via Playwright against the real Vite dev server) confirming both the logged-out "Sign in with GitHub" gate and the logged-in avatar/username/logout header with a user-scoped repo list.
+- **Update:** this session's Ultraplan-generated patch (`0001addgithuboauthmultitenancy.patch`) was reviewed in full, applied via `git apply`, and independently re-verified: local DB regenerated, backend starts cleanly on the new schema, unauthenticated `/auth/me` and `/repositories` both correctly return `401`, CORS preflight shows `access-control-allow-credentials: true`, and `GET /auth/github/login` correctly builds the GitHub authorize URL with a real `client_id` and sets the `oauth_state` cookie.
+- Real GitHub OAuth App created (`github.com/settings/developers`, callback `http://localhost:8002/auth/github/callback`), `GITHUB_OAUTH_CLIENT_ID`/`GITHUB_OAUTH_CLIENT_SECRET` added to `backend/.env`. **Real end-to-end OAuth click-through confirmed working** by the user directly in their own browser: signed in with GitHub, landed back on DevProof authenticated, `users` table shows the real GitHub account, `sessions` table shows an active session.
+
 **Next Task**
 - Wait for approval before starting the next feature.
 - Do a manual visual check of the mobile layout (browser resize or DevTools device toolbar) — not verified live this session due to tooling limitations.
@@ -179,6 +193,7 @@ Two people now work on this project, asynchronously (whenever each is free). To 
 | Fix: backend-unreachable error message | Yosef | Done | (none yet — committed directly to `main`) |
 | Fix: `.env` not loading in `--reload` worker process | Yosef | Done | (none yet — committed directly to `main`) |
 | Unified username/URL input (UX simplification) | Yosef | Done | (none yet — committed directly to `main`) |
+| "Sign in with GitHub" (OAuth) + per-user multi-tenancy | Yosef | Done | (committed directly to `main`) |
 
 (Add a new row per task. Status: Not started / In progress / In review / Done.)
 
@@ -202,6 +217,7 @@ docs/
 - No Docker
 - No Redis
 - No Celery
+- Auth: "Sign in with GitHub" (OAuth), not email/password — no password management, fits the product's identity naturally, doubles as a demo moment. Cookie-based sessions stored in SQLite, not a JWT/`SessionMiddleware`/in-memory dict.
 
 ---
 
@@ -347,7 +363,7 @@ Do not continue automatically.
 - Keep the backend minimal for the first version.
 - Use `backend/app/main.py` as the FastAPI application entry point.
 - Use `/health` as the first backend endpoint.
-- Do not add authentication, GitHub analysis, or frontend integration yet.
+- Do not add authentication, GitHub analysis, or frontend integration yet. **(Reversed for auth as of the "Sign in with GitHub" feature — see "Current Status"; GitHub analysis and frontend integration were also built long before this note was updated.)**
 - Use Python's built-in `sqlite3` module for the first database foundation.
 - Store the local SQLite file at `backend/devproof.db`.
 - Keep generated SQLite files out of Git.
