@@ -4,7 +4,8 @@ import requests
 
 GITHUB_OAUTH_CLIENT_ID = os.environ.get("GITHUB_OAUTH_CLIENT_ID")
 GITHUB_OAUTH_CLIENT_SECRET = os.environ.get("GITHUB_OAUTH_CLIENT_SECRET")
-GITHUB_OAUTH_REDIRECT_URI = "http://localhost:8002/auth/github/callback"
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8002")
+GITHUB_OAUTH_REDIRECT_URI = f"{BACKEND_URL}/auth/github/callback"
 
 
 def get_github_login_url(state: str) -> str:

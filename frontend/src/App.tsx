@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
 
-const API_BASE = 'http://localhost:8002'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8002'
 const GITHUB_REPO_URL_PATTERN = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/?$/
 
 interface CurrentUser {

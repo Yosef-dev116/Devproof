@@ -16,7 +16,7 @@ DevProof turns a GitHub repository into an objective engineering readiness repor
 
 ## Tech stack
 
-- **Backend:** Python, FastAPI, SQLite
+- **Backend:** Python, FastAPI, Postgres
 - **Frontend:** React, TypeScript, Vite
 - **AI:** OpenAI API (`gpt-4o-mini`, JSON mode)
 - **Auth:** "Sign in with GitHub" (OAuth), cookie-based sessions
@@ -36,7 +36,10 @@ OPENAI_API_KEY=your-openai-api-key-here
 GITHUB_TOKEN=your-github-personal-access-token-here
 GITHUB_OAUTH_CLIENT_ID=your-github-oauth-client-id-here
 GITHUB_OAUTH_CLIENT_SECRET=your-github-oauth-client-secret-here
+DATABASE_URL=postgresql://user:password@host:5432/devproof
 ```
+
+`DATABASE_URL` must point at a real Postgres database (a local install, or a free hosted one) - SQLite is no longer used.
 
 Run the backend from the repo root:
 
@@ -61,7 +64,7 @@ python -m pytest backend/tests -v
 
 ## Project structure
 
-See `docs/COLLABORATOR_GUIDE.md` for a full breakdown of the codebase layout, architecture rules, and contribution workflow. `docs/PROGRESS.md` tracks the full technical history and decisions behind the project.
+See `docs/COLLABORATOR_GUIDE.md` for a full breakdown of the codebase layout, architecture rules, and contribution workflow. `docs/PROGRESS.md` tracks the full technical history and decisions behind the project. `docs/DEPLOYMENT.md` covers deploying a public, phone-accessible instance (Render + Vercel).
 
 ## License
 

@@ -1,8 +1,9 @@
 import json
+import os
 import secrets
-import sqlite3
 from pathlib import Path
 
+import psycopg2.errors
 import requests
 from dotenv import load_dotenv
 from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Response, UploadFile
@@ -49,13 +50,28 @@ from backend.app.ai_report import generate_report, AIReportError
 from backend.app.scoring import calculate_credibility_score
 from backend.app.resume_parser import extract_resume_text, UnsupportedResumeFileType
 from backend.app.resume_report import generate_resume_report, ResumeReportError
+from backend.app.rate_limit import enforce_rate_limit
 
+MAX_ANALYSES_PER_HOUR = 20
+MAX_RESUME_CHECKS_PER_HOUR = 20
+
+IS_PRODUCTION = os.environ.get("ENVIRONMENT") == "production"
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5180")
+_default_origins = "http://localhost:5180,http://127.0.0.1:5180"
+CORS_ORIGINS = [origin.strip() for origin in os.environ.get("FRONTEND_ORIGINS", _default_origins).split(",")]
+
+# Cross-site cookies (frontend and backend on different domains in production)
+# require SameSite=None + Secure. Locally, frontend/backend share "localhost"
+# as their site (only the port differs), so SameSite=Lax without Secure works
+# over plain http.
+COOKIE_SAMESITE = "none" if IS_PRODUCTION else "lax"
+COOKIE_SECURE = IS_PRODUCTION
 
 app = FastAPI(title="DevProof API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5180", "http://127.0.0.1:5180"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -104,7 +120,9 @@ def health_check() -> dict[str, str]:
 def github_login() -> RedirectResponse:
     state = secrets.token_urlsafe(16)
     redirect = RedirectResponse(get_github_login_url(state))
-    redirect.set_cookie("oauth_state", state, httponly=True, samesite="lax", max_age=600)
+    redirect.set_cookie(
+        "oauth_state", state, httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE, max_age=600
+    )
     return redirect
 
 
@@ -118,9 +136,11 @@ def github_callback(code: str, state: str, oauth_state: str | None = Cookie(defa
     user = get_or_create_user(profile["id"], profile["login"], profile["avatar_url"], access_token)
     session_id = create_session(user["id"])
 
-    redirect = RedirectResponse("http://localhost:5180/")
+    redirect = RedirectResponse(FRONTEND_URL)
     redirect.delete_cookie("oauth_state")
-    redirect.set_cookie("session_id", session_id, httponly=True, samesite="lax")
+    redirect.set_cookie(
+        "session_id", session_id, httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE
+    )
     return redirect
 
 
@@ -156,7 +176,7 @@ def list_github_repos(username: str, current_user: dict = Depends(get_current_us
 def create_repository(repository: RepositoryCreate, current_user: dict = Depends(get_current_user)) -> dict[str, int | str]:
     try:
         new_id = insert_repository(repository.url, current_user["id"])
-    except sqlite3.IntegrityError:
+    except psycopg2.errors.UniqueViolation:
         raise HTTPException(status_code=409, detail="repository already exists")
     return {"id": new_id, "url": repository.url}
 
@@ -212,6 +232,7 @@ def fetch_repository_data(repository_id: int, current_user: dict = Depends(get_c
 
 @app.post("/repositories/{repository_id}/analyze", response_model=RepositoryOut)
 def analyze_repository(repository_id: int, current_user: dict = Depends(get_current_user)) -> dict:
+    enforce_rate_limit("analyze", current_user["id"], MAX_ANALYSES_PER_HOUR)
     repository = get_repository_by_id(repository_id, current_user["id"])
     if repository is None:
         raise HTTPException(status_code=404, detail="repository not found")
@@ -270,6 +291,7 @@ async def resume_check(
     resume_file: UploadFile | None = File(default=None),
     current_user: dict = Depends(get_current_user),
 ) -> dict:
+    enforce_rate_limit("resume_check", current_user["id"], MAX_RESUME_CHECKS_PER_HOUR)
     if resume_file is not None:
         file_bytes = await resume_file.read()
         try:

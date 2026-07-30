@@ -7,3 +7,4 @@ pytest
 pypdf
 python-docx
 python-multipart
+psycopg2-binary

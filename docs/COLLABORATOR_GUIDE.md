@@ -14,7 +14,7 @@ The core flow is built and working end-to-end (backend + frontend), verified aga
 
 - **Backend:** Python, FastAPI
 - **Frontend:** React, TypeScript, Vite
-- **Database:** SQLite (file-based, no separate server)
+- **Database:** Postgres (was SQLite until the public deployment; switched because serverless/hosted backends can't rely on a persistent local file)
 - **AI:** OpenAI API (`gpt-4o-mini` by default — see `backend/app/ai_report.py`)
 - **External API:** GitHub REST API
 - **Auth:** "Sign in with GitHub" (OAuth), cookie-based sessions stored in SQLite. Each user only sees their own analyzed repos.
@@ -60,9 +60,12 @@ OPENAI_API_KEY=your-real-key-here
 GITHUB_TOKEN=your-github-personal-access-token-here
 GITHUB_OAUTH_CLIENT_ID=your-github-oauth-client-id-here
 GITHUB_OAUTH_CLIENT_SECRET=your-github-oauth-client-secret-here
+DATABASE_URL=postgresql://user:password@host:5432/devproof
 ```
 
 `main.py` loads this automatically on startup via `python-dotenv`. `OPENAI_API_KEY` is required for `/repositories/{id}/analyze` (the `/fetch` and list/CRUD endpoints don't need it). `GITHUB_TOKEN` is optional but strongly recommended — without it, GitHub API calls are capped at 60/hour total; with a token (no special scopes needed for public repo reads), that jumps to 5000/hour. Generate one at `github.com/settings/tokens`.
+
+`DATABASE_URL` is required — DevProof moved from SQLite to Postgres (see `docs/DEPLOYMENT.md`) so it can run on a real host instead of only a local file. Point it at a local Postgres instance or a free hosted one; `initialize_database()` creates the tables automatically on startup either way.
 
 `GITHUB_OAUTH_CLIENT_ID`/`GITHUB_OAUTH_CLIENT_SECRET` are required for "Sign in with GitHub" — every route except `/health` and `/auth/*` requires a logged-in session. Create an OAuth App at `github.com/settings/developers` → OAuth Apps → New OAuth App, with Homepage URL `http://localhost:5180` and Authorization callback URL `http://localhost:8002/auth/github/callback`. Use `localhost` (not `127.0.0.1`) consistently — the session cookie is host-scoped, so mixing the two breaks login silently.
 

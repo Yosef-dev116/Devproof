@@ -1,0 +1,12 @@
+backend/.env
+backend/devproof.db
+**/__pycache__/
+**/*.py[cod]
+.venv/
+venv/
+frontend/
+.git/
+.github/
+.pytest_cache/
+docs/
+*.md
