@@ -2,7 +2,15 @@
 
 ## Current Status
 
+**PRODUCT PIVOT (2026-07-30):** DevProof's target shifted from "individual candidate readiness report" to **team/org-level analysis for engineering managers** — an honest picture of a team's GitHub activity: code quality, contribution patterns, and developer output (including AI slop detection), across any programming/scripting language, for a whole org rather than one repo at a time. Explicitly not just commit counts — actual code analysis, same as the existing single-repo signals, just aggregated at the team level. The existing username→repo→report and resume-check features stay as-is; this is a new, additional capability layered on top, not a replacement.
+
 **Current Feature**
+- First piece of the pivot, built and verified against real data: `GET /organizations/{org_name}/contributors` — takes a GitHub org name, fetches every repository in that org (paginated, so it's accurate for large orgs), and returns contributors aggregated with their total commit counts *across all of the org's repos*, sorted highest-first. Forked repos are excluded (a fork's commit history belongs to the upstream project, not the org, and would misattribute outside contributors' work as the team's own). Bot accounts (`type == "Bot"`, e.g. dependabot) are excluded from contributor counts. New `backend/app/team_analysis.py` (`aggregate_contributors` — pure function, no I/O, same pattern as `scoring.py`/`analysis.py`) with 4 new unit tests, all passing (19/19 total now). `github_client.py` gained `list_org_repos()` and `fetch_repo_contributors()`/`fetch_contributors_for_repos()` (paginated, parallel across repos via the existing `ThreadPoolExecutor` pattern).
+- Verified live against the real `psf` GitHub org (not a toy example): correctly paginated a repo with 401 contributors (`requests`), correctly summed a contributor's commits across multiple repos (`sigmavirus24`: 412 commits across 3 repos), correctly excluded forks (42 total repos → 38 non-fork).
+- **Not yet done:** this only returns commit counts, not the "actual code analysis" (quality/AI-slop) part of the pivot — that's the next piece. Also not yet tested through the real deployed HTTP route with auth (verified at the function level against live GitHub data; local HTTP testing is currently blocked by not having a local `DATABASE_URL` set, see below).
+- **New local-dev gap surfaced:** local dev now requires a `DATABASE_URL` env var to boot the server at all (since the Postgres migration), and it isn't set in the local `backend/.env` yet — only the deployed Render backend has one currently. Worth adding one locally (or pointing at the same Render Postgres) before doing more local testing.
+
+**Previous Feature**
 - Added "Verify a Resume Against GitHub": upload/paste a resume, compare its claims against real GitHub evidence with a per-claim verdict and overall truthfulness score
 
 **Last Completed**

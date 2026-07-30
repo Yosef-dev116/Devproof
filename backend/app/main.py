@@ -43,6 +43,8 @@ from backend.app.github_client import (
     fetch_tree_and_readme,
     fetch_sample_files,
     fetch_profile_and_repos,
+    list_org_repos,
+    fetch_contributors_for_repos,
 )
 from backend.app.analysis import detect_signals
 from backend.app.code_quality import select_sample_files, detect_type_safety_signals
@@ -51,6 +53,7 @@ from backend.app.scoring import calculate_credibility_score
 from backend.app.resume_parser import extract_resume_text, UnsupportedResumeFileType
 from backend.app.resume_report import generate_resume_report, ResumeReportError
 from backend.app.rate_limit import enforce_rate_limit
+from backend.app.team_analysis import aggregate_contributors
 
 MAX_ANALYSES_PER_HOUR = 20
 MAX_RESUME_CHECKS_PER_HOUR = 20
@@ -282,6 +285,33 @@ def remove_repository(repository_id: int, current_user: dict = Depends(get_curre
     deleted = delete_repository(repository_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="repository not found")
+
+
+@app.get("/organizations/{org_name}/contributors")
+def get_organization_contributors(org_name: str, current_user: dict = Depends(get_current_user)) -> dict:
+    try:
+        repos = list_org_repos(org_name)
+    except requests.HTTPError as error:
+        if error.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="GitHub organization not found")
+        raise HTTPException(
+            status_code=502,
+            detail=f"failed to fetch organization repositories from GitHub (GitHub returned {error.response.status_code})",
+        )
+
+    # Forks carry the upstream project's own commit history, not the org's -
+    # counting them would attribute outside contributors' work to this org.
+    own_repos = [repo for repo in repos if not repo["fork"]]
+
+    contributors_by_repo = fetch_contributors_for_repos(org_name, [repo["name"] for repo in own_repos])
+    contributors = aggregate_contributors(contributors_by_repo)
+
+    return {
+        "organization": org_name,
+        "repository_count": len(repos),
+        "analyzed_repository_count": len(own_repos),
+        "contributors": contributors,
+    }
 
 
 @app.post("/resume-check")

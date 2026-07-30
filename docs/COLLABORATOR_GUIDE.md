@@ -36,6 +36,8 @@ backend/
     ai_report.py        — calls OpenAI to generate the evidence-based repo report, no I/O besides the API call itself
     resume_parser.py   — extracts text from an uploaded resume (PDF via pypdf, DOCX via python-docx)
     resume_report.py   — calls OpenAI to compare resume claims against GitHub evidence (separate schema/prompt from ai_report.py)
+    team_analysis.py   — pure functions for org/team-level analysis (e.g. aggregating per-repo contributor stats into org-wide totals), no I/O
+    rate_limit.py      — simple in-memory per-user hourly cap on the OpenAI-calling endpoints
   requirements.txt
   .env.example       — documents required env vars (OPENAI_API_KEY, GITHUB_TOKEN, GITHUB_OAUTH_CLIENT_ID/SECRET); copy to .env and fill in your real values
 docs/

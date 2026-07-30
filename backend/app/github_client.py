@@ -142,3 +142,61 @@ def fetch_profile_and_repos(username: str) -> tuple[dict, list[dict]]:
         profile_future = executor.submit(fetch_user_profile, username)
         repos_future = executor.submit(list_public_repos, username)
         return profile_future.result(), repos_future.result()
+
+
+def list_org_repos(org: str) -> list[dict]:
+    repos: list[dict] = []
+    page = 1
+    while True:
+        response = _session.get(
+            f"{GITHUB_API_BASE}/orgs/{org}/repos",
+            params={"per_page": 100, "page": page, "type": "public"},
+        )
+        response.raise_for_status()
+        batch = response.json()
+        if not batch:
+            break
+        repos.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    return [
+        {"name": repo["name"], "full_name": repo["full_name"], "fork": repo["fork"]}
+        for repo in repos
+    ]
+
+
+def fetch_repo_contributors(owner: str, repo: str) -> list[dict]:
+    contributors: list[dict] = []
+    page = 1
+    while True:
+        response = _session.get(
+            f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contributors",
+            params={"per_page": 100, "page": page},
+        )
+        if response.status_code in (204, 403):
+            # 204: empty repository, no contributors to compute.
+            # 403: GitHub refuses to compute contributor stats for some repos
+            # (e.g. very large ones) - skip rather than fail the whole org.
+            break
+        response.raise_for_status()
+        batch = response.json()
+        if not batch:
+            break
+        contributors.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    return [
+        {"login": c["login"], "avatar_url": c.get("avatar_url"), "contributions": c["contributions"]}
+        for c in contributors
+        if c.get("type") != "Bot"
+    ]
+
+
+def fetch_contributors_for_repos(owner: str, repo_names: list[str]) -> dict[str, list[dict]]:
+    if not repo_names:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(len(repo_names), 10)) as executor:
+        futures = {name: executor.submit(fetch_repo_contributors, owner, name) for name in repo_names}
+        return {name: future.result() for name, future in futures.items()}
