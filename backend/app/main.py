@@ -1,6 +1,7 @@
 import json
 import os
 import secrets
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import psycopg2.errors
@@ -40,20 +41,27 @@ from backend.app.github_client import (
     parse_github_url,
     fetch_repo_data,
     list_public_repos,
-    fetch_tree_and_readme,
-    fetch_sample_files,
     fetch_profile_and_repos,
     list_org_repos,
     fetch_contributors_for_repos,
 )
-from backend.app.analysis import detect_signals
-from backend.app.code_quality import select_sample_files, detect_type_safety_signals
-from backend.app.ai_report import generate_report, AIReportError
+from backend.app.ai_report import AIReportError
+from backend.app.repo_analysis import analyze_repo
 from backend.app.scoring import calculate_credibility_score
 from backend.app.resume_parser import extract_resume_text, UnsupportedResumeFileType
 from backend.app.resume_report import generate_resume_report, ResumeReportError
 from backend.app.rate_limit import enforce_rate_limit
-from backend.app.team_analysis import aggregate_contributors
+from backend.app.team_analysis import (
+    aggregate_contributors,
+    select_top_contributors,
+    find_meaningful_contributions,
+    select_repos_to_analyze,
+    build_contributor_engineering_profile,
+)
+
+MIN_COMMITS_FOR_MEANINGFUL_CONTRIBUTION = 5
+MAX_CONTRIBUTORS_FOR_ENGINEERING_REPORT = 10
+MAX_REPOS_FOR_ENGINEERING_REPORT = 15
 
 MAX_ANALYSES_PER_HOUR = 20
 MAX_RESUME_CHECKS_PER_HOUR = 20
@@ -245,37 +253,16 @@ def analyze_repository(repository_id: int, current_user: dict = Depends(get_curr
     repository = get_repository_by_id(repository_id, current_user["id"])
 
     try:
-        file_entries, readme_text = fetch_tree_and_readme(owner, repo, github_data["default_branch"])
+        result = analyze_repo(owner, repo, github_data)
     except requests.HTTPError as error:
         raise HTTPException(
             status_code=502,
             detail=f"failed to fetch repository contents from GitHub (GitHub returned {error.response.status_code})",
         )
-
-    file_paths = [entry["path"] for entry in file_entries]
-    signals = detect_signals(file_paths)
-
-    sample_paths = select_sample_files(file_entries)
-    sample_contents = fetch_sample_files(owner, repo, sample_paths)
-    type_safety_signals = detect_type_safety_signals(sample_contents)
-
-    evidence = {
-        "stars": repository["stars"],
-        "forks": repository["forks"],
-        "language": repository["language"],
-        "description": repository["description"],
-        "recent_commit_count": repository["recent_commit_count"],
-        **signals,
-        "readme_excerpt": (readme_text or "")[:1500],
-        "type_safety_signals": type_safety_signals,
-    }
-
-    try:
-        report = generate_report(evidence)
     except AIReportError as error:
         raise HTTPException(status_code=502, detail=f"failed to generate AI report: {error}")
 
-    update_repository_analysis(repository_id, current_user["id"], report)
+    update_repository_analysis(repository_id, current_user["id"], result["report"])
 
     return _decorate(get_repository_by_id(repository_id, current_user["id"]))
 
@@ -311,6 +298,81 @@ def get_organization_contributors(org_name: str, current_user: dict = Depends(ge
         "repository_count": len(repos),
         "analyzed_repository_count": len(own_repos),
         "contributors": contributors,
+    }
+
+
+def _analyze_one_org_repo(owner: str, repo_name: str) -> dict | None:
+    """
+    Best-effort single-repo analysis for the org engineering report: a repo
+    that fails to fetch/analyze is skipped (returns None) rather than failing
+    the whole request - contributors whose only meaningful repo failed simply
+    fall into the "not enough evidence" case instead of a null-scored crash.
+    """
+    try:
+        repo_info = fetch_repo_data(owner, repo_name)
+        return analyze_repo(owner, repo_name, repo_info)
+    except (requests.HTTPError, AIReportError):
+        return None
+
+
+@app.get("/organizations/{org_name}/engineering-report")
+def get_organization_engineering_report(org_name: str, current_user: dict = Depends(get_current_user)) -> dict:
+    try:
+        repos = list_org_repos(org_name)
+    except requests.HTTPError as error:
+        if error.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="GitHub organization not found")
+        raise HTTPException(
+            status_code=502,
+            detail=f"failed to fetch organization repositories from GitHub (GitHub returned {error.response.status_code})",
+        )
+
+    own_repos = [repo for repo in repos if not repo["fork"]]
+    contributors_by_repo = fetch_contributors_for_repos(org_name, [repo["name"] for repo in own_repos])
+    aggregated = aggregate_contributors(contributors_by_repo)
+
+    top_contributors = select_top_contributors(aggregated, limit=MAX_CONTRIBUTORS_FOR_ENGINEERING_REPORT)
+
+    contributor_repo_map = {
+        contributor["login"]: find_meaningful_contributions(
+            contributor["login"], contributors_by_repo, min_commits=MIN_COMMITS_FOR_MEANINGFUL_CONTRIBUTION
+        )
+        for contributor in top_contributors
+    }
+
+    repos_to_analyze = select_repos_to_analyze(contributor_repo_map, max_repos=MAX_REPOS_FOR_ENGINEERING_REPORT)
+
+    repo_reports: dict[str, dict] = {}
+    if repos_to_analyze:
+        with ThreadPoolExecutor(max_workers=min(len(repos_to_analyze), 6)) as executor:
+            futures = {
+                repo_name: executor.submit(_analyze_one_org_repo, org_name, repo_name)
+                for repo_name in repos_to_analyze
+            }
+            for repo_name, future in futures.items():
+                result = future.result()
+                if result is not None:
+                    repo_reports[repo_name] = result
+
+    contributor_profiles = [
+        build_contributor_engineering_profile(
+            login=contributor["login"],
+            avatar_url=contributor["avatar_url"],
+            total_commits=contributor["total_commits"],
+            analyzed_repo_names=[
+                repo_name for repo_name in contributor_repo_map[contributor["login"]] if repo_name in repo_reports
+            ],
+            repo_reports=repo_reports,
+        )
+        for contributor in top_contributors
+    ]
+
+    return {
+        "organization": org_name,
+        "repository_count": len(repos),
+        "analyzed_repository_count": len(repo_reports),
+        "contributors_considered": len(top_contributors),
+        "contributors": contributor_profiles,
     }
 
 

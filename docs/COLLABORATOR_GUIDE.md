@@ -6,9 +6,11 @@ This file is written so you (or an AI assistant you're using, like Codex) can ge
 
 ## What DevProof is
 
-DevProof is a pitch-competition MVP: **enter a GitHub username → pick one of their public repos → get an AI-generated, evidence-based engineering readiness report** (a "credit score for software engineers" — multi-category scores, strengths, weaknesses, evidence, recommendations, a learning roadmap). The pitch deadline is days away — prioritize the demo-critical path over polish. The full spec/gap analysis lives in project memory as `devproof_pitch_spec`/`devproof_deadline` if you're using Claude; ask Yosef if you need the full text.
+DevProof started as a pitch-competition MVP (**enter a GitHub username → pick one of their public repos → get an AI-generated, evidence-based engineering readiness report** — a "credit score for software engineers") and is **live and deployed**: [devproof-xi.vercel.app](https://devproof-xi.vercel.app) (frontend) / `https://devproof-api-7avo.onrender.com` (backend API). That original flow, plus a "Verify a Resume Against GitHub" truthfulness checker, are both built, styled, and verified end-to-end on real devices.
 
-The core flow is built and working end-to-end (backend + frontend), verified against real GitHub usernames/repos. What's likely still missing when you read this: visual styling (currently plain HTML) and rate-limit hardening — check `docs/PROGRESS.md`'s "Next Task" for the current honest state.
+**As of 2026-07-30, the product is expanding**: alongside the individual-candidate flow, DevProof now also does **team/org-level analysis for engineering managers** — an honest picture of a whole GitHub org's code quality, contribution patterns, and developer output (including AI-slop detection), not just commit counts. First piece built: `GET /organizations/{org_name}/contributors` (commit-count aggregation across an org, backend only, no frontend yet). See `docs/PROGRESS.md`'s "PRODUCT PIVOT" note (top of "Current Status") for the full framing, and project memory (`devproof_team_pivot` if you're using Claude) for the cross-session context.
+
+Check `docs/PROGRESS.md`'s "Current Status" section for exactly what's built vs. still in progress as of whenever you're reading this — it's kept current, this file is the stable overview.
 
 ## Tech stack (fixed decisions — don't introduce alternatives)
 
@@ -34,9 +36,10 @@ backend/
     code_quality.py    — pure type-safety/"AI slop" heuristics from sampled source file contents, no I/O
     scoring.py         — pure credibility score calculation (stars/forks/commits formula), no I/O
     ai_report.py        — calls OpenAI to generate the evidence-based repo report, no I/O besides the API call itself
+    repo_analysis.py    — orchestrates one repo's evidence-gathering + generate_report() call (extracted from main.py so both the single-repo route and the org engineering-report route share it, no duplicated logic)
     resume_parser.py   — extracts text from an uploaded resume (PDF via pypdf, DOCX via python-docx)
     resume_report.py   — calls OpenAI to compare resume claims against GitHub evidence (separate schema/prompt from ai_report.py)
-    team_analysis.py   — pure functions for org/team-level analysis (e.g. aggregating per-repo contributor stats into org-wide totals), no I/O
+    team_analysis.py   — pure functions for org/team-level analysis: aggregating per-repo contributor stats into org-wide totals, and aggregating per-repo AI reports into a per-contributor engineering profile (score averaging, risk flags, summary) - no I/O, no OpenAI calls of its own
     rate_limit.py      — simple in-memory per-user hourly cap on the OpenAI-calling endpoints
   requirements.txt
   .env.example       — documents required env vars (OPENAI_API_KEY, GITHUB_TOKEN, GITHUB_OAUTH_CLIENT_ID/SECRET); copy to .env and fill in your real values
