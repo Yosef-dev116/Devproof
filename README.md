@@ -20,9 +20,10 @@ DevProof turns GitHub activity into an objective, evidence-based report — for 
    - Category scores with specific evidence-based comments: Code Organization, Documentation, Testing, DevOps, Security, Collaboration, Project Maturity, Role Relevance, and Code Quality & Type Safety
    - Strengths, weaknesses, concrete recommendations, and a short learning roadmap
 
-**Team/org analysis** (backend only so far, no frontend UI yet):
+**Team/org analysis:**
 - `GET /organizations/{org_name}/contributors` — fetches every repository in a GitHub org and returns contributors aggregated with their total commit counts across the whole org (forks and bot accounts excluded so the numbers reflect the org's own human contributors).
 - `GET /organizations/{org_name}/engineering-report` — goes beyond commit counts: for the org's top 10 contributors by commits, reuses the existing single-repo AI analysis pipeline on the repos they meaningfully contributed to (≥5 commits, deduplicated across contributors, capped at ~15 unique repos per request to bound cost/latency) and aggregates each contributor's own documentation/testing/DevOps/security/project-maturity/code-quality scores, an overall engineering score, evidence-based strengths/weaknesses, rule-based risk flags, and a summary. Never invents a score - a contributor with no analyzed repos in a given run gets explicit `null` scores and a note, not a fabricated number.
+- **Team Analysis page** (frontend): enter a GitHub organization → contributor leaderboard (rank, commits, engineering score, quality score, type safety, documentation, testing) → click any contributor for their full detailed report (category scores, strengths/weaknesses, risk flags, repositories analyzed).
 
 ## Tech stack
 

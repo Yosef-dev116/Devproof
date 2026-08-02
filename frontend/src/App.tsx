@@ -81,6 +81,39 @@ function ScoreBadge({ score }: { score: number }) {
   return <span className={`score-badge score-${scoreTier(score)}`}>{score}</span>
 }
 
+function ScoreBadgeOrEmpty({ score }: { score: number | null }) {
+  if (score === null) return <span className="score-badge score-neutral">N/A</span>
+  return <ScoreBadge score={score} />
+}
+
+interface ContributorProfile {
+  login: string
+  avatar_url: string | null
+  commit_count: number
+  repositories_contributed: number
+  documentation_score: number | null
+  testing_score: number | null
+  devops_score: number | null
+  security_score: number | null
+  project_maturity_score: number | null
+  average_quality_score: number | null
+  average_type_safety: number | null
+  overall_engineering_score: number | null
+  strengths: string[]
+  weaknesses: string[]
+  risk_flags: string[]
+  summary: string
+  repositories: string[]
+}
+
+interface OrgEngineeringReport {
+  organization: string
+  repository_count: number
+  analyzed_repository_count: number
+  contributors_considered: number
+  contributors: ContributorProfile[]
+}
+
 function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -104,6 +137,12 @@ function App() {
   const [isCheckingResume, setIsCheckingResume] = useState(false)
   const [resumeError, setResumeError] = useState<string | null>(null)
   const [resumeReport, setResumeReport] = useState<ResumeReport | null>(null)
+
+  const [orgName, setOrgName] = useState('')
+  const [isAnalyzingOrg, setIsAnalyzingOrg] = useState(false)
+  const [orgError, setOrgError] = useState<string | null>(null)
+  const [orgReport, setOrgReport] = useState<OrgEngineeringReport | null>(null)
+  const [selectedContributorLogin, setSelectedContributorLogin] = useState<string | null>(null)
 
   const apiFetch = async (path: string, options?: RequestInit) => {
     const response = await fetch(`${API_BASE}${path}`, { ...options, credentials: 'include' })
@@ -297,8 +336,34 @@ function App() {
     }
   }
 
+  const handleAnalyzeOrg = async (event: FormEvent) => {
+    event.preventDefault()
+    setOrgError(null)
+    setOrgReport(null)
+    setSelectedContributorLogin(null)
+
+    const trimmed = orgName.trim()
+    if (!trimmed) return
+
+    setIsAnalyzingOrg(true)
+    try {
+      const response = await apiFetch(`/organizations/${encodeURIComponent(trimmed)}/engineering-report`)
+      if (!response.ok) {
+        const data = await response.json()
+        setOrgError(data.detail)
+        return
+      }
+      setOrgReport(await response.json())
+    } catch {
+      setOrgError('Could not reach the backend server. Is it running?')
+    } finally {
+      setIsAnalyzingOrg(false)
+    }
+  }
+
   const activeRepository = repositories.find((repository) => repository.id === activeRepositoryId)
   const activeReport = activeRepository?.analysis_report ?? null
+  const selectedContributor = orgReport?.contributors.find((c) => c.login === selectedContributorLogin) ?? null
 
   return (
     <div className="app">
@@ -571,6 +636,174 @@ function App() {
           </div>
         )}
       </section>
+
+      <section className="card">
+        <h2>Team Analysis</h2>
+        <p className="category-hint">
+          Enter a GitHub organization to see an engineering-quality leaderboard for its top contributors -
+          not just commit counts, real code analysis reused from the repository report above.
+        </p>
+        <form className="inline-form" onSubmit={handleAnalyzeOrg}>
+          <input
+            type="text"
+            value={orgName}
+            onChange={(event) => setOrgName(event.target.value)}
+            placeholder="GitHub organization name"
+            disabled={isAnalyzingOrg}
+          />
+          <button type="submit" className="btn btn-primary" disabled={isAnalyzingOrg}>
+            {isAnalyzingOrg ? 'Analyzing organization...' : 'Analyze Organization'}
+          </button>
+        </form>
+        {orgError && <p className="error-text">{orgError}</p>}
+        {isAnalyzingOrg && (
+          <p className="category-hint">
+            Fetching repositories and running engineering analysis - this can take up to a minute for a
+            larger organization.
+          </p>
+        )}
+      </section>
+
+      {selectedContributor && (
+        <section className="card report-card">
+          <h2>Contributor Engineering Report</h2>
+          <button className="btn btn-small btn-secondary" onClick={() => setSelectedContributorLogin(null)}>
+            Back to leaderboard
+          </button>
+
+          <div className="contributor-identity contributor-identity-header">
+            {selectedContributor.avatar_url && (
+              <img className="avatar" src={selectedContributor.avatar_url} alt={selectedContributor.login} />
+            )}
+            <span className="report-subject">{selectedContributor.login}</span>
+          </div>
+
+          <div className="overall-score">
+            <ScoreBadgeOrEmpty score={selectedContributor.overall_engineering_score} />
+            <span className="overall-score-label">Overall Engineering Score</span>
+          </div>
+
+          <p className="resume-summary">{selectedContributor.summary}</p>
+
+          {selectedContributor.risk_flags.length > 0 && (
+            <>
+              <h3>Risk Flags</h3>
+              <ul className="plain-list risk-flags-list">
+                {selectedContributor.risk_flags.map((flag) => <li key={flag}>{flag}</li>)}
+              </ul>
+            </>
+          )}
+
+          <h3>Category Scores</h3>
+          <ul className="score-row-list">
+            <li className="score-row">
+              <ScoreBadgeOrEmpty score={selectedContributor.documentation_score} />
+              <span>Documentation</span>
+            </li>
+            <li className="score-row">
+              <ScoreBadgeOrEmpty score={selectedContributor.testing_score} />
+              <span>Testing</span>
+            </li>
+            <li className="score-row">
+              <ScoreBadgeOrEmpty score={selectedContributor.devops_score} />
+              <span>DevOps</span>
+            </li>
+            <li className="score-row">
+              <ScoreBadgeOrEmpty score={selectedContributor.security_score} />
+              <span>Security</span>
+            </li>
+            <li className="score-row">
+              <ScoreBadgeOrEmpty score={selectedContributor.project_maturity_score} />
+              <span>Project Maturity</span>
+            </li>
+            <li className="score-row">
+              <ScoreBadgeOrEmpty score={selectedContributor.average_quality_score} />
+              <span>Code Quality &amp; Type Safety (AI Slop)</span>
+            </li>
+            <li className="score-row">
+              <ScoreBadgeOrEmpty score={selectedContributor.average_type_safety} />
+              <span>Type Safety (measured, not AI-judged)</span>
+            </li>
+          </ul>
+
+          <div className="report-columns">
+            <div>
+              <h3>Strengths</h3>
+              <ul className="plain-list">
+                {selectedContributor.strengths.length > 0
+                  ? selectedContributor.strengths.map((item) => <li key={item}>{item}</li>)
+                  : <li>None recorded.</li>}
+              </ul>
+            </div>
+            <div>
+              <h3>Weaknesses</h3>
+              <ul className="plain-list">
+                {selectedContributor.weaknesses.length > 0
+                  ? selectedContributor.weaknesses.map((item) => <li key={item}>{item}</li>)
+                  : <li>None recorded.</li>}
+              </ul>
+            </div>
+          </div>
+
+          <h3>Repositories Analyzed ({selectedContributor.repositories_contributed})</h3>
+          <ul className="plain-list">
+            {selectedContributor.repositories.length > 0
+              ? selectedContributor.repositories.map((repo) => <li key={repo}>{repo}</li>)
+              : <li>No repositories from this contributor were included in this run's analysis depth.</li>}
+          </ul>
+        </section>
+      )}
+
+      {orgReport && (
+        <section className="card">
+          <h2>{orgReport.organization} Contributor Leaderboard</h2>
+          <p className="category-hint">
+            {orgReport.repository_count} repositories found, {orgReport.analyzed_repository_count} analyzed
+            for engineering quality across the top {orgReport.contributors_considered} contributors by commits.
+          </p>
+          <div className="table-scroll">
+            <table className="repo-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Developer</th>
+                  <th>Commits</th>
+                  <th>Engineering Score</th>
+                  <th>Quality Score</th>
+                  <th>Type Safety</th>
+                  <th>Documentation</th>
+                  <th>Testing</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orgReport.contributors.map((contributor, index) => (
+                  <tr
+                    key={contributor.login}
+                    className="leaderboard-row"
+                    onClick={() => setSelectedContributorLogin(contributor.login)}
+                  >
+                    <td>{index + 1}</td>
+                    <td>
+                      <div className="contributor-identity">
+                        {contributor.avatar_url && (
+                          <img className="avatar" src={contributor.avatar_url} alt={contributor.login} />
+                        )}
+                        <span>{contributor.login}</span>
+                      </div>
+                    </td>
+                    <td>{contributor.commit_count}</td>
+                    <td><ScoreBadgeOrEmpty score={contributor.overall_engineering_score} /></td>
+                    <td><ScoreBadgeOrEmpty score={contributor.average_quality_score} /></td>
+                    <td><ScoreBadgeOrEmpty score={contributor.average_type_safety} /></td>
+                    <td><ScoreBadgeOrEmpty score={contributor.documentation_score} /></td>
+                    <td><ScoreBadgeOrEmpty score={contributor.testing_score} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
         </>
       )}
     </div>

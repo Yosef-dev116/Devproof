@@ -28,7 +28,7 @@
   margin-top: 12px;
 }
 
-.auth-bar .avatar {
+.avatar {
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -534,4 +534,49 @@ input[type='text']:disabled {
 
 .verdict-contradicted {
   background: #e5484d;
+}
+
+/* Team analysis */
+
+.score-neutral {
+  background: var(--border);
+  color: var(--text);
+}
+
+.leaderboard-row {
+  cursor: pointer;
+}
+
+.leaderboard-row:hover {
+  background: var(--accent-bg);
+}
+
+.contributor-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contributor-identity-header {
+  margin: 12px 0 16px;
+}
+
+.score-row-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-h);
+}
+
+.risk-flags-list {
+  color: #e5484d;
 }
